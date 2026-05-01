@@ -1,0 +1,100 @@
+============================================================
+  NodePulse — WSL2 Installation Guide
+============================================================
+
+
+REQUIREMENTS
+------------
+- Windows 10 (2004+) or Windows 11
+- WSL2 enabled
+
+  If WSL2 is not installed, open PowerShell as Administrator and run:
+
+    wsl --install
+
+  Then reboot your PC.
+
+
+------------------------------------------------------------
+  INSTALL
+------------------------------------------------------------
+
+1. Download install_wsl2.zip and unzip it anywhere on your PC.
+
+2. Open PowerShell as Administrator.
+
+3. Navigate to the unzipped folder:
+
+    cd C:\path\to\install_wsl2
+
+4. Run the installer:
+
+    .\wsl2-import.ps1
+
+   The script will:
+   - Download Ubuntu 24.04 (~200MB, saved in %TEMP% for reuse)
+   - Create the NodePulse WSL2 distro
+   - Install PHP, nginx, Python, cloudflared and all services
+   - Isolate the distro from the Windows filesystem (C: not mounted)
+
+   Wait for "NodePulse is ready!" to appear before continuing.
+
+
+------------------------------------------------------------
+  START
+------------------------------------------------------------
+
+1. Open PowerShell (no admin needed) and enter the distro:
+
+    wsl -d NodePulse
+
+2. Start all services:
+
+    start-server
+
+   The public Cloudflare tunnel URL will appear in the output
+   once cloudflared connects. Open that URL in your browser.
+
+
+------------------------------------------------------------
+  EDIT FILES WITH VS CODE
+------------------------------------------------------------
+
+The NodePulse filesystem is isolated from Windows, so you
+cannot browse it via Explorer. Use VS Code instead.
+
+0. mount disk C into WSL:
+   mount -t drvfs C: /mnt/c
+
+
+1. Install the WSL extension in VS Code
+
+2. Open VS Code on Windows, press Ctrl+Shift+P and run:
+     WSL: Connect to WSL using Distro
+     Select NodePulse.
+
+3. Once connected: File > Open Folder > /root/www
+
+
+
+------------------------------------------------------------
+  OTHER COMMANDS  (run inside the distro)
+------------------------------------------------------------
+
+  stop-server      Stop all services
+  server-status    Check the status of all services
+
+
+------------------------------------------------------------
+  UNINSTALL
+------------------------------------------------------------
+
+From PowerShell (outside the distro):
+
+  wsl --unregister NodePulse
+
+To also delete the distro files:
+
+  Remove-Item -Recurse -Force "$env:USERPROFILE\WSL\NodePulse"
+
+============================================================

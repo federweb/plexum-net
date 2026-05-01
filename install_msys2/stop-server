@@ -1,0 +1,50 @@
+#!/usr/bin/bash
+
+#============================================================
+# stop-server
+# Stops all services: nginx, php-cgi, cloudflared, terminal.
+# Adapted for MSYS64 on Windows.
+#============================================================
+
+echo "[...] Stopping all services..."
+
+# Stop terminal daemon first (before killing nginx/php-cgi)
+# Use PID file + taskkill for reliable Windows process termination
+DAEMON_PID_FILE="$HOME/tmp/.terminal/daemon.pid"
+if [ -f "$DAEMON_PID_FILE" ]; then
+    DAEMON_PID=$(cat "$DAEMON_PID_FILE")
+    if [ -n "$DAEMON_PID" ]; then
+        # Kill the daemon and its entire child process tree
+        taskkill //F //T //PID "$DAEMON_PID" > /dev/null 2>&1
+    fi
+    rm -f "$DAEMON_PID_FILE"
+fi
+# Fallback: php.exe is only used by the daemon (web uses php-cgi.exe)
+taskkill //F //IM php.exe > /dev/null 2>&1
+pkill -f "terminal/daemon" 2>/dev/null
+
+# Kill nodepulse tunnel loop (prevents cloudflared from being restarted)
+NP_LOOP_PID_FILE="$HOME/tmp/.np_loop_pid"
+if [ -f "$NP_LOOP_PID_FILE" ]; then
+    NP_PID=$(cat "$NP_LOOP_PID_FILE")
+    if [ -n "$NP_PID" ]; then
+        taskkill //F //T //PID "$NP_PID" > /dev/null 2>&1
+    fi
+    rm -f "$NP_LOOP_PID_FILE"
+fi
+pkill -f nodepulse 2>/dev/null
+
+# Kill maintenance loop
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ]; then
+    MPID=$(cat "$MAINT_PID_FILE")
+    if [ -n "$MPID" ]; then
+        taskkill //F //T //PID "$MPID" > /dev/null 2>&1
+    fi
+    rm -f "$MAINT_PID_FILE"
+fi
+
+taskkill //F //IM nginx.exe > /dev/null 2>&1
+taskkill //F //IM php-cgi.exe > /dev/null 2>&1
+taskkill //F //IM cloudflared.exe > /dev/null 2>&1
+echo "[OK] All services stopped."

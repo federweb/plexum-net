@@ -1,0 +1,535 @@
+/* https://wireog.com */
+
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f5f5f5;
+}
+
+
+section {
+    padding: 20px;
+    margin-bottom: 20px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+
+.center-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+
+
+#clickto {
+        animation: blinkAndChangeColor 10s infinite; 
+        font-size: 12px !important;
+        }
+        
+        @keyframes blinkAndChangeColor {
+        0%, 100% {
+        opacity: 1; 
+        color: #c4529a;
+        }
+        50% {
+        opacity: 0; 
+        color: transparent; 
+        }
+        80% {
+        opacity: 1; 
+        color: #4659a4; 
+        }
+        }
+        
+
+
+
+ .slogan-container {
+            background-color: #ffffff;
+            color: #333333;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 80%;
+            max-width:1200px;
+            margin: 20px auto;
+        }
+
+        .slogan-title {
+        display:none
+        }
+
+        .slogan-wire {
+            color: #4a4a9e;
+        }
+
+        .slogan-og {
+            color: #c94f9f;
+        }
+
+        .slogan-subtitle {
+            font-size: 28px;
+            margin-top: 10px;
+            color: #4a4a9e;
+        }
+
+        .slogan-tagline {
+            font-size: 20px;
+            font-weight: 400;
+            margin-top: 5px;
+            color: #c94f9f;
+        }
+
+        .slogan-underline {
+            width: 80%;
+            height: 2px;
+            background-color: #4a4a9e;
+            margin: 15px auto 0;
+        }
+
+
+
+
+
+
+
+
+        .developer-message {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 1200px;
+            margin: 20px auto;
+        }
+        .developer-message h2 {
+            color: #4a4a9e;
+            border-bottom: 2px solid #c94f9f;
+            padding-bottom: 10px;
+        }
+        .developer-message p {
+            margin-bottom: 15px;
+        }
+
+
+
+
+
+
+
+
+
+
+        .footer {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px 0;
+            font-size: 14px;
+            margin-top: 30px;
+        }
+        .footer-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+        .footer-section {
+            flex-basis: 48%;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .footer-section h4 {
+            color: #99a6d5;
+            border-bottom: 1px solid #99a6d5;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        }
+        .footer-section p {
+            margin-bottom: 10px;
+            line-height: 1.2;
+        }
+        
+        .footerArc {
+        font-size: x-small;
+        }
+        
+        .copyright {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #34495e;
+            flex-basis: 100%;
+        }
+
+
+
+
+@media (max-width: 600px) 
+
+{
+        .footer-section {
+        flex-basis: 100%;
+        }
+        
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+.center-image img{
+max-height:100px;
+}
+
+#default-rooms, #user-rooms {
+    flex: 1;
+    text-align: center;
+}
+
+
+#create-room-button {
+    text-align: center;
+    margin: auto;
+    margin-bottom: 20px;
+    width: 80%;
+    max-width: 1200px;
+}
+
+
+.button-myroom{
+text-align:center;
+margin-top:5px;
+margin-bottom:25px;
+}
+
+
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: #c4529a;
+    border: none;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+/* Stili delle liste */
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    margin-bottom: 20px;
+    position: relative;
+
+}
+
+
+
+.room-button {
+    min-height: 95px;
+    display: inline-block;
+    padding: 15px 15px 15px 15px;
+    padding-top: 40px;
+    font-size: 16px;
+    cursor: pointer;
+    text-align: left;
+    line-height: 1.2;
+    width: 66%;
+    box-sizing: border-box;
+    background-color: #e9e9e9;
+    border: 1px solid #d5d5d5;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+.room-button:hover {
+    background-color: #d5d5d5;
+}
+
+.room-name {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.room-id {
+    display: block;
+    font-size: 12px;
+    color: #666;
+}
+
+
+.room-creation-time {
+    font-size: 12px;
+    color: #3d3d85;
+    display: block;
+}
+
+
+.room-actions {
+    position: absolute;
+    top: 5px;
+    right: 18%;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.copy-link, .edit-room {
+    font-size: 12px;
+    padding: 3px 6px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.3s;
+}
+
+.copy-link:hover, .edit-room:hover {
+    background-color: #e0e0e0;
+}
+
+
+#delete-all {
+    margin-top: 20px;
+    background-color: #c4529a;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+#delete-all:hover {
+    background-color: #4659a4;
+}
+
+/* Responsive design */
+@media (max-width: 725px) {
+        body {
+        flex-direction: column; 
+    }
+    
+
+
+
+
+
+#clickto{
+        position: relative;
+        font-size: 16px;
+        bottom: -8px;
+        left: 0px;
+    }
+
+.room-button {
+    width: 95%;
+}
+
+    
+    .room-button {
+        font-size: 14px;
+    }
+
+    .copy-link, .edit-room {
+        font-size: 10px;
+    }
+    
+    
+    .room-actions {
+    display: inline;
+
+}
+}
+
+
+
+#create-room-btn {
+    background: linear-gradient(to bottom, #4a4a9e, #3a3a7e);
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 
+        0 5px 15px rgba(74, 74, 158, 0.4),
+        0 10px 20px rgba(74, 74, 158, 0.3),
+        0 15px 25px rgba(74, 74, 158, 0.2);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    cursor: pointer;
+}
+
+#create-room-btn:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, #c94f9f, #a93f8f);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+}
+
+#create-room-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 
+        0 7px 20px rgba(74, 74, 158, 0.5),
+        0 12px 25px rgba(74, 74, 158, 0.4),
+        0 17px 30px rgba(74, 74, 158, 0.3);
+}
+
+#create-room-btn:hover:before {
+    opacity: 1;
+}
+
+#create-room-btn:active {
+    transform: translateY(-1px);
+    box-shadow: 
+        0 3px 10px rgba(74, 74, 158, 0.4),
+        0 6px 15px rgba(74, 74, 158, 0.3),
+        0 9px 20px rgba(74, 74, 158, 0.2);
+}
+
+#create-room-btn:after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 60%);
+    transform: rotate(45deg);
+    transition: all 0.3s ease;
+}
+
+#create-room-btn:hover:after {
+    top: -30%;
+    left: -30%;
+}
+
+
+
+
+.h2def {
+    text-align: center;
+}
+
+
+#default-rooms {
+  width: 100%;
+  max-width: 1200px;  
+  margin: 0 auto;  
+  padding: 20px;
+}
+
+#default-rooms ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  padding: 0;
+  list-style-type: none;
+  justify-content: center;
+}
+
+#default-rooms li {
+  text-align: center;
+}
+
+#default-rooms a {
+    display: block;
+    text-decoration: none;
+    padding: 15px 10px;
+    background: linear-gradient(145deg, #ffffff, #e6e6e6);
+    border-radius: 10px;
+    box-shadow: 5px 5px 10px #d1d1d1, -5px -5px 10px #ffffff;
+    color: #333;
+    font-size:0.9rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+#default-rooms a::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 60%);
+    transform: rotate(45deg);
+    transition: all 0.3s ease;
+}
+
+#default-rooms a:hover {
+    transform: translateY(-3px);
+    box-shadow: 7px 7px 14px #d1d1d1, -7px -7px 14px #ffffff;
+}
+
+#default-rooms a:hover {
+  background-color: #e0e0e0;
+}
+
+
+@media (min-width: 800px) {
+
+  
+  #default-rooms {
+    margin-bottom: 50px;
+}
+}
+
+@media (max-width: 600px) {
+  #default-rooms ul {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+  
+  #default-rooms li {
+    max-width: 125px;
+}
+
+#default-rooms {
+    width: 85%;
+}
+  
+}
+}

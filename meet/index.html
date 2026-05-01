@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PulseCall — NodePulse</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0e17;
+    color: #e0e0e0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1 { font-size: 1.5rem; color: #00e5a0; letter-spacing: 2px; }
+  .subtitle { color: #667; font-size: 0.8rem; margin-bottom: 20px; }
+
+  /* ---- SETUP SCREEN ---- */
+  .setup-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 400px;
+    flex: 1;
+  }
+  .setup-screen h2 {
+    font-size: 1.1rem;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+  }
+  .setup-screen p {
+    color: #556;
+    font-size: 0.8rem;
+    margin-bottom: 28px;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .mode-btn {
+    width: 100%;
+    padding: 18px 20px;
+    border-radius: 12px;
+    border: 1px solid #1e293b;
+    background: #111827;
+    color: #e0e0e0;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.2s;
+    text-align: left;
+  }
+  .mode-btn:active { background: #1e293b; transform: scale(0.98); }
+  .mode-btn .icon { font-size: 1.8rem; }
+  .mode-btn .desc { font-size: 0.75rem; color: #556; font-weight: 400; margin-top: 2px; }
+  .mode-btn.primary { border-color: #00e5a0; }
+
+  .perm-error {
+    background: #f4433620;
+    border: 1px solid #f44;
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: #f88;
+    text-align: center;
+    display: none;
+    width: 100%;
+    line-height: 1.5;
+  }
+
+  /* ---- CALL SCREEN ---- */
+  .call-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 500px;
+    flex: 1;
+  }
+
+  .status-bar {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 16px;
+    width: 100%;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .status-bar .label { color: #667; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+  .status-bar .peer-id {
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    color: #00e5a0;
+    margin-top: 4px;
+    user-select: all;
+    cursor: pointer;
+    word-break: break-all;
+  }
+  .copy-hint { font-size: 0.65rem; color: #445; margin-top: 4px; }
+  .status-bar .status { font-size: 0.75rem; margin-top: 6px; }
+  .online { color: #00e5a0; }
+  .offline { color: #f44; }
+  .calling { color: #ffab00; }
+
+  .mode-badge {
+    display: inline-block;
+    background: #1e293b;
+    color: #889;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 14px;
+  }
+
+  .video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #111827;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    border: 1px solid #1e293b;
+  }
+  #remoteVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+  #localVideo {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 28%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid #00e5a0;
+    z-index: 2;
+  }
+  .no-call-msg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #334;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  .audio-only .video-container { aspect-ratio: auto; height: 120px; }
+  .audio-only #localVideo { display: none; }
+  .audio-call-ui {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .audio-only .audio-call-ui.active { display: block; }
+  .audio-call-ui .pulse-icon { font-size: 2.5rem; animation: pulse 1.5s infinite; }
+  .audio-call-ui .call-time { font-size: 0.85rem; color: #00e5a0; margin-top: 6px; font-family: 'Courier New', monospace; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .incoming {
+    background: #111827;
+    border: 1px solid #ffab00;
+    border-radius: 10px;
+    padding: 14px 16px;
+    width: 100%;
+    margin-bottom: 12px;
+    text-align: center;
+    display: none;
+  }
+  .incoming p { margin-bottom: 10px; color: #ffab00; font-size: 0.9rem; }
+  .incoming button { margin: 0 6px; padding: 12px 24px; font-size: 0.95rem; }
+  .btn-accept { background: #00e5a0; color: #0a0e17; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+  .btn-reject { background: #f44; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+
+  .controls { width: 100%; }
+  .call-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .call-row input {
+    flex: 1;
+    padding: 14px 12px;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+    background: #111827;
+    color: #e0e0e0;
+    font-size: 1rem;
+    font-family: 'Courier New', monospace;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .call-row input::placeholder { color: #445; }
+  .call-row input:focus { border-color: #00e5a0; }
+
+  button { cursor: pointer; transition: all 0.15s; }
+  .btn-call {
+    padding: 14px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #00e5a0;
+    color: #0a0e17;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .btn-call:disabled { background: #1e293b; color: #445; }
+  .btn-call:active:not(:disabled) { transform: scale(0.96); }
+
+  .btn-hangup {
+    width: 100%;
+    padding: 14px;
+    border-radius: 8px;
+    border: none;
+    background: #f44;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    display: none;
+  }
+  .btn-hangup:active { transform: scale(0.96); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn-toggle {
+    flex: 1;
+    padding: 12px;
+    background: #1e293b;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+  }
+  .btn-toggle.off { background: #f4433625; color: #f66; }
+  .btn-toggle:active { transform: scale(0.96); }
+
+  .log {
+    width: 100%;
+    margin-top: 14px;
+    font-size: 0.7rem;
+    color: #445;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+  .log p { padding: 2px 0; border-bottom: 1px solid #0d1117; }
+</style>
+</head>
+<body>
+
+<h1>📞 PULSECALL</h1>
+<p class="subtitle">encrypted p2p calls on NodePulse</p>
+
+<!-- ====== SETUP SCREEN ====== -->
+<div class="setup-screen" id="setupScreen">
+  <h2>Choose call mode</h2>
+  <p>Tap to grant permissions and enter PulseCall</p>
+
+  <button class="mode-btn primary" onclick="enterWithVideo()">
+    <span class="icon">🎥</span>
+    <span>
+      Video + Audio
+      <span class="desc">Camera and microphone</span>
+    </span>
+  </button>
+
+  <button class="mode-btn" onclick="enterAudioOnly()">
+    <span class="icon">🎤</span>
+    <span>
+      Audio Only
+      <span class="desc">Microphone only — lighter on battery</span>
+    </span>
+  </button>
+
+  <div class="perm-error" id="permError"></div>
+</div>
+
+<!-- ====== CALL SCREEN ====== -->
+<div class="call-screen" id="callScreen">
+
+  <div class="status-bar">
+    <div class="label">Your Peer ID</div>
+    <div class="peer-id" id="myPeerId" onclick="copyId()">connecting...</div>
+    <div class="copy-hint" id="copyHint">tap to copy</div>
+    <div class="status" id="statusText"><span class="offline">● connecting</span></div>
+  </div>
+
+  <div class="mode-badge" id="modeBadge">video + audio</div>
+
+  <div class="incoming" id="incomingBox">
+    <p>📞 Incoming call from <strong id="callerId"></strong></p>
+    <button class="btn-accept" onclick="acceptCall()">Accept</button>
+    <button class="btn-reject" onclick="rejectCall()">Reject</button>
+  </div>
+
+  <div class="video-container">
+    <span class="no-call-msg" id="noCallMsg">no active call</span>
+    <div class="audio-call-ui" id="audioCallUi">
+      <div class="pulse-icon">📞</div>
+      <div class="call-time" id="callTime">00:00</div>
+    </div>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo" autoplay playsinline muted></video>
+  </div>
+
+  <div class="controls">
+    <div class="call-row">
+      <input type="text" id="remotePeerId" placeholder="paste peer ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button class="btn-call" id="callBtn" onclick="startCall()" disabled>Call</button>
+    </div>
+    <button class="btn-hangup" id="hangupBtn" onclick="hangUp()">Hang Up</button>
+    <div class="btn-row">
+      <button class="btn-toggle" id="toggleVideo" onclick="toggleVideo()">🎥 Video Off</button>
+      <button class="btn-toggle" id="toggleAudio" onclick="toggleAudio()">🎤 Mute</button>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let peer, localStream, currentCall, incomingCall;
+let videoEnabled = true, audioEnabled = true, isVideoMode = true;
+let callTimer = null, callSeconds = 0;
+
+const ringtone = new Audio('ringtone.mp3');
+ringtone.loop = true;
+
+function startRingtone() {
+  ringtone.currentTime = 0;
+  ringtone.play().catch(() => {});
+}
+
+function stopRingtone() {
+  ringtone.pause();
+  ringtone.currentTime = 0;
+}
+
+function log(msg) {
+  const p = document.createElement('p');
+  p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  $('log').prepend(p);
+}
+
+// ---- SETUP ----
+
+async function enterWithVideo() {
+  isVideoMode = true;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+    videoEnabled = true;
+    audioEnabled = true;
+    showCallScreen();
+  } catch(e) {
+    showPermError('Camera or microphone blocked. On mobile: tap the lock/info icon in the address bar → Site settings → allow Camera and Microphone, then reload.');
+  }
+}
+
+async function enterAudioOnly() {
+  isVideoMode = false;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+    videoEnabled = false;
+    audioEnabled = true;
+    showCallScreen();
+  } catch(e) {
+    showPermError('Microphone blocked. On mobile: tap the lock/info icon in the address bar → Site settings → allow Microphone, then reload.');
+  }
+}
+
+function showPermError(msg) {
+  $('permError').textContent = msg;
+  $('permError').style.display = 'block';
+}
+
+function showCallScreen() {
+  $('setupScreen').style.display = 'none';
+  $('callScreen').style.display = 'flex';
+  $('localVideo').srcObject = localStream;
+
+  if (!isVideoMode) {
+    $('callScreen').classList.add('audio-only');
+    $('modeBadge').textContent = 'audio only';
+    $('toggleVideo').style.display = 'none';
+    $('localVideo').style.display = 'none';
+  } else {
+    $('modeBadge').textContent = 'video + audio';
+  }
+
+  log('media ready — ' + (isVideoMode ? 'video + audio' : 'audio only'));
+  initPeer();
+}
+
+// ---- PEER ----
+
+function initPeer() {
+  // Self-hosted PeerServer on NodePulse — proxied via nginx, same host/port as the page.
+  peer = new Peer(undefined, {
+    host: location.hostname,
+    port: location.port ? parseInt(location.port) : (location.protocol === 'https:' ? 443 : 80),
+    path: '/peerjs',
+    secure: location.protocol === 'https:'
+  });
+
+  peer.on('open', id => {
+    $('myPeerId').textContent = id;
+    $('statusText').innerHTML = '<span class="online">● online</span>';
+    $('callBtn').disabled = false;
+    log('online — ID: ' + id);
+  });
+
+  peer.on('call', call => {
+    incomingCall = call;
+    $('callerId').textContent = call.peer;
+    $('incomingBox').style.display = 'block';
+    log('incoming call from ' + call.peer);
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    startRingtone();
+    call.on('close', () => {
+      if (incomingCall === call) {
+        stopRingtone();
+        $('incomingBox').style.display = 'none';
+        incomingCall = null;
+        log('caller hung up before answer');
+      }
+    });
+  });
+
+  peer.on('disconnected', () => {
+    $('statusText').innerHTML = '<span class="offline">● reconnecting...</span>';
+    log('disconnected — reconnecting');
+    peer.reconnect();
+  });
+
+  peer.on('error', err => {
+    log('error: ' + err.type);
+    if (err.type === 'peer-unavailable') {
+      alert('Peer not found. Check the ID.');
+    }
+  });
+}
+
+// ---- COPY ----
+
+function copyId() {
+  const id = $('myPeerId').textContent;
+  if (id === 'connecting...') return;
+  navigator.clipboard.writeText(id).then(() => {
+    $('copyHint').textContent = 'copied!';
+    setTimeout(() => { $('copyHint').textContent = 'tap to copy'; }, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = id;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    $('copyHint').textContent = 'copied!';
+    setTimeout(() => { $('copyHint').textContent = 'tap to copy'; }, 2000);
+  });
+}
+
+// ---- CALL ----
+
+function startCall() {
+  const remoteId = $('remotePeerId').value.trim();
+  if (!remoteId) return;
+  $('statusText').innerHTML = '<span class="calling">● calling...</span>';
+  log('calling ' + remoteId);
+  currentCall = peer.call(remoteId, localStream);
+  handleCall(currentCall);
+}
+
+function acceptCall() {
+  stopRingtone();
+  $('incomingBox').style.display = 'none';
+  incomingCall.answer(localStream);
+  currentCall = incomingCall;
+  handleCall(currentCall);
+  log('call accepted');
+}
+
+function rejectCall() {
+  stopRingtone();
+  $('incomingBox').style.display = 'none';
+  incomingCall.close();
+  incomingCall = null;
+  log('call rejected');
+}
+
+function handleCall(call) {
+  call.on('stream', remoteStream => {
+    $('remoteVideo').srcObject = remoteStream;
+    if (isVideoMode) {
+      $('remoteVideo').style.display = 'block';
+    } else {
+      $('remoteVideo').style.display = 'none';
+      $('audioCallUi').classList.add('active');
+      startCallTimer();
+    }
+    $('noCallMsg').style.display = 'none';
+    $('hangupBtn').style.display = 'block';
+    $('statusText').innerHTML = '<span class="online">● in call</span>';
+    log('connected — stream active');
+  });
+
+  call.on('close', () => { endCall(); log('call ended by remote'); });
+  call.on('error', err => { log('call error: ' + err); endCall(); });
+}
+
+function hangUp() {
+  if (currentCall) currentCall.close();
+  endCall();
+  log('call ended');
+}
+
+function endCall() {
+  $('remoteVideo').srcObject = null;
+  $('remoteVideo').style.display = 'none';
+  $('noCallMsg').style.display = 'block';
+  $('hangupBtn').style.display = 'none';
+  $('audioCallUi').classList.remove('active');
+  $('statusText').innerHTML = '<span class="online">● online</span>';
+  stopCallTimer();
+  currentCall = null;
+}
+
+// ---- TIMER ----
+
+function startCallTimer() {
+  callSeconds = 0;
+  $('callTime').textContent = '00:00';
+  callTimer = setInterval(() => {
+    callSeconds++;
+    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const s = String(callSeconds % 60).padStart(2, '0');
+    $('callTime').textContent = m + ':' + s;
+  }, 1000);
+}
+
+function stopCallTimer() {
+  if (callTimer) { clearInterval(callTimer); callTimer = null; }
+  callSeconds = 0;
+}
+
+// ---- TOGGLES ----
+
+function toggleVideo() {
+  if (!localStream) return;
+  const track = localStream.getVideoTracks()[0];
+  if (!track) return;
+  videoEnabled = !videoEnabled;
+  track.enabled = videoEnabled;
+  $('toggleVideo').textContent = videoEnabled ? '🎥 Video Off' : '🎥 Video On';
+  $('toggleVideo').classList.toggle('off', !videoEnabled);
+}
+
+function toggleAudio() {
+  if (!localStream) return;
+  const track = localStream.getAudioTracks()[0];
+  if (!track) return;
+  audioEnabled = !audioEnabled;
+  track.enabled = audioEnabled;
+  $('toggleAudio').textContent = audioEnabled ? '🎤 Mute' : '🎤 Unmute';
+  $('toggleAudio').classList.toggle('off', !audioEnabled);
+}
+</script>
+</body>
+</html>

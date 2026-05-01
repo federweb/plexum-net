@@ -1,0 +1,97 @@
+#!/bin/bash
+
+#============================================================
+# start-server
+# Starts nginx + php-cgi + Cloudflare tunnel.
+# WSL2 — always in nginx mode (no lighttpd, no SELinux).
+#============================================================
+
+MODE=$(cat "$HOME/.server-mode" 2>/dev/null || echo "nginx")
+
+echo ""
+echo "================================"
+echo "  STARTING SERVER (nginx)"
+echo "================================"
+echo ""
+
+# Stop everything cleanly
+STOP_SCRIPT="$(dirname "$(readlink -f "$0")")/stop-server"
+if [ -f "$STOP_SCRIPT" ]; then
+    bash "$STOP_SCRIPT"
+elif [ -f "$HOME/bin/stop-server" ]; then
+    bash "$HOME/bin/stop-server"
+else
+    nginx -s stop 2>/dev/null
+    pkill php-cgi 2>/dev/null
+    pkill cloudflared 2>/dev/null
+    pkill -f "terminal/daemon" 2>/dev/null
+    pkill -f "www/cli/server.py" 2>/dev/null
+fi
+sleep 1
+
+# PHP test file
+echo '<?php echo "PHP_OK"; ?>' > ~/www/_phptest.php
+
+# Start php-cgi
+echo "[...] Starting php-cgi (port 9000)..."
+PHP_FCGI_CHILDREN=2 PHP_FCGI_MAX_REQUESTS=0 php-cgi -d opcache.enable=0 -b 127.0.0.1:9000 &
+sleep 1
+
+# Start nginx
+echo "[...] Starting nginx..."
+nginx
+sleep 2
+
+# Verify PHP execution
+PHPTEST=$(curl -s http://127.0.0.1:8080/_phptest.php 2>/dev/null)
+if [ "$PHPTEST" != "PHP_OK" ]; then
+    echo "[ERROR] PHP execution failed (HTTP: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/_phptest.php))"
+    echo "        Check: ~/www/index.php exists? nginx error log?"
+    rm -f ~/www/_phptest.php
+    exit 1
+fi
+rm -f ~/www/_phptest.php
+echo "[OK] nginx + php-cgi running on port 8080"
+
+# Start terminal daemon (PHP legacy)
+echo "[...] Starting terminal daemon..."
+pkill -f "terminal/daemon" 2>/dev/null
+sleep 1
+php -d opcache.enable=0 ~/www/terminal/daemon.php > ~/tmp/terminal-daemon.log 2>&1 &
+echo "[OK] Terminal daemon started (log: ~/tmp/terminal-daemon.log)"
+
+# Start PulseTerminal (Python WebSocket + tmux)
+if [ -f ~/www/cli/server.py ]; then
+    echo "[...] Starting PulseTerminal (WS + tmux)..."
+    pkill -f "www/cli/server.py" 2>/dev/null
+    sleep 1
+    nohup python3 ~/www/cli/server.py \
+        --host 127.0.0.1 --port 7681 \
+        > ~/tmp/pulseterm.log 2>&1 &
+    sleep 1
+    if pgrep -f "www/cli/server.py" > /dev/null; then
+        echo "[OK] PulseTerminal running on 127.0.0.1:7681 (log: ~/tmp/pulseterm.log)"
+    else
+        echo "[WARN] PulseTerminal failed to start — see ~/tmp/pulseterm.log"
+    fi
+fi
+
+echo "[OK] Server running on port 8080"
+
+# Start PeerServer (PeerJS signaling for meet/)
+if command -v pm2 &>/dev/null && [ -f ~/services/peerserver/server.js ]; then
+    echo "[...] Starting PeerServer (peerjs :9001)..."
+    pm2 describe peerserver > /dev/null 2>&1 \
+        && pm2 restart peerserver > /dev/null 2>&1 \
+        || PEER_PORT=9001 pm2 start ~/services/peerserver/server.js --name peerserver > /dev/null 2>&1
+    echo "[OK] PeerServer running on :9001"
+fi
+
+# Start cloudflared with NodePulse
+echo "[...] Starting Cloudflare tunnel + NodePulse..."
+echo ""
+if [ -f "$HOME/bin/nodepulse" ]; then
+    bash "$HOME/bin/nodepulse"
+else
+    cloudflared tunnel --url http://127.0.0.1:8080
+fi

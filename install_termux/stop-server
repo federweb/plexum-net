@@ -1,0 +1,38 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+#============================================================
+# stop-server
+# Stops all services: lighttpd/nginx, php-cgi, cloudflared.
+#============================================================
+
+echo "[...] Stopping all services..."
+pkill lighttpd 2>/dev/null
+nginx -s stop 2>/dev/null
+pkill php-cgi 2>/dev/null
+pm2 stop peerserver 2>/dev/null
+# Kill nodepulse tunnel loop (prevents cloudflared from being restarted)
+NP_LOOP_PID_FILE="$HOME/tmp/.np_loop_pid"
+if [ -f "$NP_LOOP_PID_FILE" ]; then
+    NP_PID=$(cat "$NP_LOOP_PID_FILE")
+    if [ -n "$NP_PID" ]; then
+        kill "$NP_PID" 2>/dev/null
+    fi
+    rm -f "$NP_LOOP_PID_FILE"
+fi
+pkill -f nodepulse 2>/dev/null
+
+# Kill maintenance loop
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ]; then
+    MPID=$(cat "$MAINT_PID_FILE")
+    if [ -n "$MPID" ]; then
+        kill "$MPID" 2>/dev/null
+    fi
+    rm -f "$MAINT_PID_FILE"
+fi
+
+pkill cloudflared 2>/dev/null
+pkill -f "terminal/daemon" 2>/dev/null
+pkill -f "www/cli/server.py" 2>/dev/null
+rm -f ~/tmp/php.socket* 2>/dev/null
+echo "[OK] All services stopped."

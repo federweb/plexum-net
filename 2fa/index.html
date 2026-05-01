@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>TOTP Offline</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 3em auto; padding: 1em; }
+  input { width: 100%; padding: .6em; font-family: monospace; font-size: 1em; box-sizing: border-box; }
+  #code { font-size: 3em; font-family: monospace; letter-spacing: .15em; text-align: center; margin: .5em 0; }
+  #bar { height: 6px; background: #ddd; border-radius: 3px; overflow: hidden; }
+  #fill { height: 100%; background: #3b82f6; transition: width 1s linear; }
+  .err { color: #c00; font-size: .9em; }
+</style>
+</head>
+<body>
+  <h2>2FA Code Generator</h2>
+  <p>Generate secure TOTP (Time-based One-Time Password) codes instantly. Paste your secret key and get your 2FA authentication codes with real-time countdown.</p>
+  <label>Secret Base32:</label>
+  <input id="secret" placeholder="JBSWY3DPEHPK3PXP" autocomplete="off" spellcheck="false">
+  <div id="code">------</div>
+  <div id="bar"><div id="fill" style="width:100%"></div></div>
+  <div id="err" class="err"></div>
+
+<script>
+const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Decode(s) {
+  s = s.toUpperCase().replace(/=+$/, '').replace(/\s+/g, '');
+  let bits = '';
+  for (const c of s) {
+    const v = ALPHA.indexOf(c);
+    if (v < 0) throw new Error('Carattere Base32 non valido: ' + c);
+    bits += v.toString(2).padStart(5, '0');
+  }
+  const out = new Uint8Array(bits.length >> 3);
+  for (let i = 0; i < out.length; i++)
+    out[i] = parseInt(bits.substr(i * 8, 8), 2);
+  return out;
+}
+
+async function totp(secret, period = 30, digits = 6) {
+  const key = base32Decode(secret);
+  let counter = Math.floor(Date.now() / 1000 / period);
+  const buf = new ArrayBuffer(8);
+  const dv = new DataView(buf);
+  dv.setUint32(0, Math.floor(counter / 0x100000000));
+  dv.setUint32(4, counter >>> 0);
+
+  const ck = await crypto.subtle.importKey(
+    'raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+  );
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', ck, buf));
+  const o = mac[19] & 0x0f;
+  const n = ((mac[o] & 0x7f) << 24) | (mac[o+1] << 16) | (mac[o+2] << 8) | mac[o+3];
+  return (n % 10 ** digits).toString().padStart(digits, '0');
+}
+
+const $secret = document.getElementById('secret');
+const $code = document.getElementById('code');
+const $fill = document.getElementById('fill');
+const $err = document.getElementById('err');
+
+async function tick() {
+  const s = $secret.value.trim();
+  const left = 30 - (Math.floor(Date.now() / 1000) % 30);
+  $fill.style.width = (left / 30 * 100) + '%';
+  if (!s) { $code.textContent = '------'; $err.textContent = ''; return; }
+  try {
+    $code.textContent = await totp(s);
+    $err.textContent = '';
+  } catch (e) {
+    $code.textContent = '------';
+    $err.textContent = e.message;
+  }
+}
+$secret.addEventListener('input', tick);
+setInterval(tick, 1000);
+tick();
+</script>
+</body>
+</html>

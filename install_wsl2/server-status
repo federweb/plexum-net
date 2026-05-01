@@ -1,0 +1,61 @@
+#!/bin/bash
+
+#============================================================
+# server-status
+# Shows the status of all services (WSL2 — always nginx).
+#============================================================
+
+echo ""
+echo "=== SERVICE STATUS (NodePulse WSL2) ==="
+echo ""
+
+if pgrep -x nginx > /dev/null; then
+    echo "Nginx:       RUNNING"
+else
+    echo "Nginx:       STOPPED"
+fi
+
+if pgrep -f "php-cgi" > /dev/null; then
+    echo "PHP-CGI:     RUNNING"
+else
+    echo "PHP-CGI:     STOPPED"
+fi
+
+if pgrep -x cloudflared > /dev/null; then
+    echo "Cloudflared: RUNNING"
+else
+    echo "Cloudflared: STOPPED"
+fi
+
+if pgrep -f "terminal/daemon" > /dev/null; then
+    echo "Terminal:    RUNNING"
+else
+    echo "Terminal:    STOPPED"
+fi
+
+if pgrep -f "www/cli/server.py" > /dev/null; then
+    echo "PulseTerm:   RUNNING (:7681 loopback)"
+else
+    echo "PulseTerm:   STOPPED"
+fi
+
+if pgrep -f "services/peerserver/server.js" > /dev/null; then
+    echo "PeerServer:  RUNNING (:9001, /peerjs/)"
+else
+    echo "PeerServer:  STOPPED"
+fi
+
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ] && kill -0 "$(cat "$MAINT_PID_FILE")" 2>/dev/null; then
+    echo "Maintenance: RUNNING"
+else
+    echo "Maintenance: STOPPED"
+fi
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 2>/dev/null)
+echo "HTTP test:   $HTTP_CODE"
+echo ""
+echo "PHP files:   ~/www/"
+echo "Node ID:     $(cat "$HOME/.nodepulse/node_id" 2>/dev/null || echo 'not generated')"
+echo "Gossip log:  ~/.nodepulse/gossip.log"
+echo ""

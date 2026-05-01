@@ -1,0 +1,13 @@
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+    AddType application/json .json
+</IfModule>
+
+<IfModule mod_headers.c>
+    # Service Worker: no cache
+    <FilesMatch "sw\.js$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Content-Type "application/javascript"
+        Header set Service-Worker-Allowed "/"
+    </FilesMatch>
+</IfModule>

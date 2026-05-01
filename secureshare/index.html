@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'">
+    <title>Secure Link Share</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="/" class="dash-back" style="position:absolute;top:16px;left:16px;color:#999;text-decoration:none;font-size:.85rem;transition:color .2s;z-index:10"
+       onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#999'">&larr; Dashboard</a>
+    <div class="container">
+        <h1>Secure Link Share</h1>
+
+        <div class="description-container">
+            <p class="description-text">
+                <strong>Share text or links securely with view limits.</strong><br>
+                Create encrypted shares that automatically expire after a set number of views or 7 days.
+                Perfect for sharing sensitive information, temporary links, or one-time passwords safely.
+            </p>
+        </div>
+
+        <div id="createForm" class="form-container">
+            <h2>Create Secure Share</h2>
+            <textarea id="contentInput" placeholder="Enter your text or link to share..."></textarea>
+            <div class="input-group">
+                <label for="maxViews">Maximum Views:</label>
+                <input type="number" id="maxViews" min="1" max="100" value="1">
+            </div>
+            <button id="generateBtn" class="btn-primary">Generate Link</button>
+            <div id="generatedLink" class="hidden">
+                <h3>Generated Link:</h3>
+                <div class="link-container">
+                    <input type="text" id="shareUrl" readonly>
+                    <button id="copyBtn" class="btn-secondary">Copy</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewContent" class="content-container hidden">
+            <div id="contentDisplay"></div>
+            <div id="qrcode"></div>
+            <div id="viewsRemaining"></div>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+    </div>
+
+    <script src="script.js"></script>
+<script src="/nodepulse-sw.js"></script>
+</body>
+</html>

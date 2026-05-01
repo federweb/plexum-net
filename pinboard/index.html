@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'">
+    <title>Pinboard &middot; NodePulse</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="/" class="dash-back">&larr; Dashboard</a>
+
+    <header class="pb-header">
+        <div class="pb-logo">
+            <span class="logo-dot"></span>
+            <span class="logo-text">PINBOARD</span>
+        </div>
+        <p class="pb-tagline">Public notes &middot; self-destructing &middot; encrypted at rest</p>
+    </header>
+
+    <main class="pb-main">
+        <!-- ==== Create form ==== -->
+        <section class="pb-card pb-create">
+            <h2 class="pb-section-title">
+                <span class="pb-section-bar"></span>
+                Drop a new pin
+            </h2>
+
+            <form id="pinForm" autocomplete="off" novalidate>
+                <div class="pb-field">
+                    <label for="pinTitle">Title</label>
+                    <input id="pinTitle" name="title" type="text" maxlength="100"
+                           placeholder="Give your pin a name..." required>
+                    <div class="pb-counter"><span id="titleCount">0</span>/100</div>
+                </div>
+
+                <div class="pb-field">
+                    <label for="pinText">Message</label>
+                    <textarea id="pinText" name="text" maxlength="1500" rows="5"
+                              placeholder="Paste text or URLs here. Links become clickable automatically."
+                              required></textarea>
+                    <div class="pb-counter"><span id="textCount">0</span>/1500</div>
+                </div>
+
+                <div class="pb-field">
+                    <label>Expiration</label>
+                    <div class="pb-ttl-grid" id="ttlGrid">
+                        <!-- Each option is a real checkbox styled as a chip. Only one can be active. -->
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="120">
+                            <span>2 min</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="600">
+                            <span>10 min</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="3600" data-default="1">
+                            <span>1 hour</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="21600">
+                            <span>6 hours</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="43200">
+                            <span>12 hours</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="86400">
+                            <span>24 hours</span>
+                        </label>
+                        <label class="pb-ttl">
+                            <input type="checkbox" name="ttl" value="604800">
+                            <span>7 days</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pb-actions">
+                    <button type="submit" id="submitBtn" class="btn-primary">
+                        <span class="btn-label">Pin it</span>
+                        <span class="btn-spinner" aria-hidden="true"></span>
+                    </button>
+                    <div id="formMsg" class="pb-msg" role="status"></div>
+                </div>
+            </form>
+        </section>
+
+        <!-- ==== Board ==== -->
+        <section class="pb-card pb-board">
+            <div class="pb-board-head">
+                <h2 class="pb-section-title">
+                    <span class="pb-section-bar"></span>
+                    Board
+                    <span class="pb-count" id="pinCount">0</span>
+                </h2>
+
+                <div class="pb-tools">
+                    <div class="pb-sort" role="tablist" aria-label="Sort pins">
+                        <button type="button" class="pb-sort-btn is-active" data-sort="newest" role="tab">Newest</button>
+                        <button type="button" class="pb-sort-btn" data-sort="soonest" role="tab">Expiring soonest</button>
+                    </div>
+                    <button type="button" id="refreshBtn" class="pb-refresh" title="Refresh">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                            <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <ul id="pinList" class="pb-list" aria-live="polite"></ul>
+
+            <div id="emptyState" class="pb-empty hidden">
+                <div class="pb-empty-ring"></div>
+                <p>No pins yet. Be the first to drop one.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="pb-footer">
+        <span>Encrypted &middot; No tracking &middot; Pins self-destruct</span>
+    </footer>
+
+    <script src="script.js"></script>
+    <script src="/nodepulse-sw.js"></script>
+</body>
+</html>

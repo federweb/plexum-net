@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseTerminal — Sessions</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #0a0a0a;
+            --surface: #111111;
+            --border:  #1e1e1e;
+            --accent:  #00ff88;
+            --accent2: #00c9a7;
+            --text:    #c0caf5;
+            --muted:   #4a5080;
+            --danger:  #f7768e;
+            --warn:    #e0af68;
+        }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Fira Code", "Cascadia Code", Menlo, Monaco, "Courier New", monospace;
+            font-size: 14px;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 16px 48px;
+        }
+
+        /* ── Header ── */
+        .header {
+            width: 100%;
+            max-width: 720px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .logo-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.5px;
+        }
+
+        .logo-sub {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        /* ── Create form ── */
+        .create-card {
+            width: 100%;
+            max-width: 720px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 24px;
+        }
+
+        .create-card label {
+            display: block;
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 10px;
+        }
+
+        .create-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .create-row input {
+            flex: 1;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font: 13px/1 "Fira Code", monospace;
+            padding: 8px 12px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .create-row input:focus { border-color: var(--accent); }
+        .create-row input::placeholder { color: var(--muted); }
+
+        .btn-create {
+            padding: 8px 18px;
+            background: var(--accent);
+            color: #0a0a0a;
+            border: none;
+            border-radius: 6px;
+            font: bold 13px/1 "Fira Code", monospace;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, opacity 0.15s;
+        }
+        .btn-create:hover { background: var(--accent2); }
+        .btn-create:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ── Sessions list ── */
+        .sessions-header {
+            width: 100%;
+            max-width: 720px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .sessions-title {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .btn-refresh {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font: 12px "Fira Code", monospace;
+            cursor: pointer;
+            transition: color 0.15s;
+        }
+        .btn-refresh:hover { color: var(--accent); }
+
+        .sessions-list {
+            width: 100%;
+            max-width: 720px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .session-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: border-color 0.15s;
+        }
+        .session-card:hover { border-color: #2e2e40; }
+
+        .session-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            flex-shrink: 0;
+            box-shadow: 0 0 6px var(--accent);
+        }
+
+        .session-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .session-name {
+            font-size: 14px;
+            color: var(--text);
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .session-meta {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        .session-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-open {
+            padding: 6px 14px;
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 6px;
+            font: 12px/1 "Fira Code", monospace;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.15s;
+        }
+        .btn-open:hover { background: rgba(0,255,136,0.1); }
+
+        .btn-delete {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            border-radius: 6px;
+            font: 12px/1 "Fira Code", monospace;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .btn-delete:hover { border-color: var(--danger); color: var(--danger); }
+
+        /* ── Empty state ── */
+        .empty-state {
+            width: 100%;
+            max-width: 720px;
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--muted);
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        /* ── Error/success toast ── */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 20px;
+            border-radius: 10px;
+            font: 13px/1 "Fira Code", monospace;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 99;
+        }
+        #toast.ok  { background: rgba(0,255,136,0.15); border: 1px solid var(--accent); color: var(--accent); }
+        #toast.err { background: rgba(247,118,142,0.15); border: 1px solid var(--danger); color: var(--danger); }
+        #toast.show { opacity: 1; }
+
+        /* ── Spinner ── */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+        }
+
+        /* ── Input error ── */
+        .input-error {
+            font-size: 11px;
+            color: var(--danger);
+            margin-top: 7px;
+            min-height: 14px;
+        }
+        #new-name.err { border-color: var(--danger); }
+
+        /* ── Menu panel ── */
+        @media(max-width:768px){#menu-panel{display:none!important}}
+        #menu-panel{position:fixed;right:0;top:50%;transform:translateY(-50%);width:40px;display:flex;flex-direction:column;gap:2px;z-index:9999;background:#151820;border:1px solid #1e2330;border-right:none;border-radius:8px 0 0 8px;padding:4px 0;box-shadow:-2px 0 12px rgba(0,0,0,.4)}
+        .mp-btn{display:flex;align-items:center;justify-content:center;width:40px;height:40px;text-decoration:none;font-size:18px;color:#64748b;transition:color .2s,background .2s;border-radius:6px 0 0 6px}
+        .mp-btn:hover{color:#e2e8f0;background:rgba(255,255,255,.06);text-decoration:none!important}
+        .mp-btn.mp-active{color:#00c9a7;background:rgba(0,201,167,.1)}
+    </style>
+</head>
+<body>
+
+<div id="menu-panel">
+  <a href="/" title="Home" class="mp-btn">&#x1F3E0;</a>
+  <a href="/cli/" title="Shell" class="mp-btn mp-active"><span style="font-family:monospace;font-size:13px;font-weight:700">&gt;_</span></a>
+  <a href="/filemanager/" title="File Manager" class="mp-btn">&#x1F4C2;</a>
+  <a href="/cloud/" title="Cloud" class="mp-btn">&#x2B06;</a>
+  <a href="/monitor/" title="Monitor" class="mp-btn">&#x1F4CA;</a>
+  <a href="/bookmarks/" title="Bookmarks" class="mp-btn">&#x2B50;</a>
+</div>
+
+<div class="header">
+    <div class="logo">
+        <span class="logo-name">PulseTerminal</span>
+        <span class="logo-sub">session manager</span>
+    </div>
+</div>
+
+<div class="create-card">
+    <label>New persistent session</label>
+    <div class="create-row">
+        <input type="text" id="new-name" placeholder="session name" maxlength="40"
+               oninput="clearInputError()" onkeydown="if(event.key==='Enter') createSession()">
+        <button class="btn-create" id="btn-create" onclick="createSession()">Create</button>
+    </div>
+    <div class="input-error" id="name-error"></div>
+</div>
+
+<div class="sessions-header">
+    <span class="sessions-title">Persistent sessions</span>
+    <button class="btn-refresh" onclick="loadSessions()">refresh</button>
+</div>
+
+<div class="sessions-list" id="sessions-list">
+    <div class="empty-state"><span class="spin"></span></div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/nodepulse-sw.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    // Base path: strip trailing slash from location.pathname's directory
+    // e.g. /cli/ → /cli  or  /cli → /cli
+    var basePath = location.pathname.replace(/\/?$/, '');
+    // If we're at /cli/, basePath = /cli/  → strip trailing /
+    if (basePath.endsWith('/')) basePath = basePath.slice(0, -1);
+
+    function apiUrl(path) {
+        return basePath + path;
+    }
+
+    function terminalUrl(params) {
+        return basePath + '/terminal?' + params;
+    }
+
+    // ── Toast ──────────────────────────────────────────────────────────────
+
+    var toastEl = document.getElementById('toast');
+    var toastTimer = null;
+
+    function toast(msg, type) {
+        toastEl.textContent = msg;
+        toastEl.className = (type || 'ok') + ' show';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+            toastEl.classList.remove('show');
+        }, 2200);
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    var _sessions = [];   // kept in sync by loadSessions/renderSessions
+
+    function fmtTime(unix) {
+        if (!unix) return '';
+        var d = new Date(unix * 1000);
+        return d.toLocaleString(undefined, {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    }
+
+    /** Mirror of server-side _sanitize_sid: lowercase, spaces→-, keep alphanum/-/_ */
+    function sanitizeSid(raw) {
+        return raw.toLowerCase()
+            .replace(/ /g, '-')
+            .replace(/[^a-z0-9_-]/g, '-')
+            .replace(/-{2,}/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ── Input error helpers ─────────────────────────────────────────────────
+
+    var nameEl  = document.getElementById('new-name');
+    var errEl   = document.getElementById('name-error');
+
+    function setInputError(msg) {
+        errEl.textContent = msg;
+        nameEl.classList.add('err');
+    }
+
+    function clearInputError() {
+        errEl.textContent = '';
+        nameEl.classList.remove('err');
+    }
+
+    // ── Load sessions ───────────────────────────────────────────────────────
+
+    function loadSessions() {
+        var list = document.getElementById('sessions-list');
+        fetch(apiUrl('/api/sessions'))
+            .then(function (r) { return r.json(); })
+            .then(function (sessions) {
+                _sessions = sessions || [];
+                renderSessions(_sessions);
+            })
+            .catch(function () {
+                list.innerHTML = '<div class="empty-state">Failed to load sessions.<br>' +
+                    'Is tmux installed?</div>';
+            });
+    }
+
+    function renderSessions(sessions) {
+        var list = document.getElementById('sessions-list');
+        if (!sessions || sessions.length === 0) {
+            list.innerHTML = '<div class="empty-state">' +
+                'No persistent sessions yet.<br>' +
+                'Create one above.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        sessions.forEach(function (s) {
+            var card = document.createElement('div');
+            card.className = 'session-card';
+            card.dataset.sid = s.id;
+
+            var meta = [];
+            if (s.created) meta.push('created ' + fmtTime(s.created));
+            if (s.windows) meta.push(s.windows + (s.windows === 1 ? ' window' : ' windows'));
+            meta.push('tmux: ' + s.tmux);
+
+            card.innerHTML =
+                '<div class="session-dot"></div>' +
+                '<div class="session-info">' +
+                    '<div class="session-name">' + esc(s.id) + '</div>' +
+                    '<div class="session-meta">' + esc(meta.join(' · ')) + '</div>' +
+                '</div>' +
+                '<div class="session-actions">' +
+                    '<a class="btn-open" href="' + esc(terminalUrl('sid=' + s.id)) + '"' +
+                       ' target="_blank">open</a>' +
+                    '<button class="btn-delete" onclick="deleteSession(\'' + esc(s.id) + '\')">kill</button>' +
+                '</div>';
+            list.appendChild(card);
+        });
+    }
+
+    // ── Create session ──────────────────────────────────────────────────────
+
+    function createSession() {
+        var btn  = document.getElementById('btn-create');
+        var name = nameEl.value.trim();
+
+        clearInputError();
+
+        if (!name) {
+            setInputError('Session name is required.');
+            nameEl.focus();
+            return;
+        }
+
+        var sid = sanitizeSid(name);
+        if (!sid) {
+            setInputError('Name contains only invalid characters.');
+            return;
+        }
+
+        var exists = _sessions.some(function (s) { return s.id === sid; });
+        if (exists) {
+            setInputError('Session "' + sid + '" already exists.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin"></span>';
+
+        fetch(apiUrl('/api/sessions'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        })
+        .then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+                return data;
+            });
+        })
+        .then(function (session) {
+            nameEl.value = '';
+            toast('Session "' + session.id + '" created', 'ok');
+            loadSessions();
+        })
+        .catch(function (e) {
+            setInputError(e.message);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Create';
+        });
+    }
+
+    // ── Delete session ──────────────────────────────────────────────────────
+
+    function deleteSession(sid) {
+        if (!confirm('Kill session "' + sid + '"? The process will be terminated.')) return;
+
+        fetch(apiUrl('/api/sessions/' + encodeURIComponent(sid)), { method: 'DELETE' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function () {
+                toast('Session killed', 'ok');
+                // Animate removal
+                var card = document.querySelector('[data-sid="' + sid + '"]');
+                if (card) card.remove();
+                // Reload to refresh empty-state if needed
+                if (!document.querySelector('.session-card')) {
+                    renderSessions([]);
+                }
+            })
+            .catch(function (e) {
+                toast('Error: ' + e.message, 'err');
+            });
+    }
+
+    // Expose to inline handlers
+    window.createSession  = createSession;
+    window.deleteSession  = deleteSession;
+    window.loadSessions   = loadSessions;
+
+    // ── Init ────────────────────────────────────────────────────────────────
+
+    loadSessions();
+    // Auto-refresh every 15 seconds
+    setInterval(loadSessions, 15000);
+
+})();
+</script>
+</body>
+</html>

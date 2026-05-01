@@ -1,0 +1,69 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+#============================================================
+# server-status
+# Shows the status of all services.
+#============================================================
+
+MODE=$(cat "$HOME/.server-mode" 2>/dev/null || echo "unknown")
+echo ""
+echo "=== SERVICE STATUS (mode: $MODE) ==="
+echo ""
+
+if [ "$MODE" = "lighttpd" ]; then
+    if pgrep -x lighttpd > /dev/null; then
+        echo "Lighttpd:    RUNNING"
+    else
+        echo "Lighttpd:    STOPPED"
+    fi
+else
+    if pgrep -x nginx > /dev/null; then
+        echo "Nginx:       RUNNING"
+    else
+        echo "Nginx:       STOPPED"
+    fi
+    if pgrep -f "php-cgi" > /dev/null; then
+        echo "PHP-CGI:     RUNNING"
+    else
+        echo "PHP-CGI:     STOPPED"
+    fi
+fi
+
+if pgrep -x cloudflared > /dev/null; then
+    echo "Cloudflared: RUNNING"
+else
+    echo "Cloudflared: STOPPED"
+fi
+
+if pgrep -f "terminal/daemon" > /dev/null; then
+    echo "Terminal:    RUNNING"
+else
+    echo "Terminal:    STOPPED"
+fi
+
+if pgrep -f "www/cli/server.py" > /dev/null; then
+    echo "PulseTerm:   RUNNING (:7681 loopback, tmux=pulse)"
+else
+    echo "PulseTerm:   STOPPED"
+fi
+
+if pgrep -f "services/peerserver/server.js" > /dev/null; then
+    echo "PeerServer:  RUNNING (:9001, /peerjs/)"
+else
+    echo "PeerServer:  STOPPED"
+fi
+
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ] && kill -0 "$(cat "$MAINT_PID_FILE")" 2>/dev/null; then
+    echo "Maintenance: RUNNING"
+else
+    echo "Maintenance: STOPPED"
+fi
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 2>/dev/null)
+echo "HTTP test:   $HTTP_CODE"
+echo ""
+echo "PHP files:   ~/www/"
+echo "Gossip log:  ~/.nodepulse/gossip.log"
+echo "Mode:        $MODE"
+echo ""

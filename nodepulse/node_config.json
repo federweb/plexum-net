@@ -1,0 +1,18 @@
+{
+    "node_id": "pulsenode",
+    "gossip_interval_sec": 300,
+    "heartbeat_interval_sec": 60,
+    "maintenance_interval_sec": 100,
+    "gossip_fanout": 3,
+    "max_peers": 100,
+    "ttl_hours": 24,
+    "serve_downloads": true,
+    "auto_update": true,
+    "log_level": "info",
+    "rate_limits": {
+        "announce":    [20, 3600],
+        "publish_url": [100, 3600],
+        "heartbeat":   [500, 3600],
+        "gossip":      [250, 3600]
+    }
+}

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NodePulse Desktop — Openbox Remote via cloudflared</title>
+</head>
+<body>
+<h1 id="nodepulse-desktop-openbox-remote-via-cloudflared">NodePulse
+Desktop — Openbox Remote via cloudflared</h1>
+<h3 style="color:red;" id="quick-install">To install the entire infrastructure, just run <code>install_desktop_wsl2.sh</code> or <code>install_desktop_termux.sh</code> from a NodePulse shell terminal.</h3>
+
+<p>Operational note for publishing a minimal X11 graphical desktop
+(Openbox) through the existing cloudflared tunnel, accessible from any
+modern browser with no plugins or dedicated clients.</p>
+<p>Stack: <strong>Xvnc</strong> (tigervnc) + <strong>openbox</strong> +
+<strong>websockify</strong> + <strong>noVNC</strong> + <strong>nginx
+auth_request</strong> → <code>auth_gate</code> (same pattern as
+PulseTerminal / <code>cli/</code>).</p>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<pre><code>Browser HTTPS
+    │
+    ▼
+cloudflared (existing tunnel)
+    │
+    ▼
+nginx :8080
+    ├── auth_request → /cli-auth.php   (gate_auth cookie, 204/401)
+    └── /desktop/  →  websockify :6080
+                          │
+                          ├── serves noVNC HTML5 client (--web)
+                          └── WS → TCP :5901  →  Xvnc display :1
+                                                      │
+                                                      └── openbox + tint2 + xterm</code></pre>
+<p>No physical Android display required: <code>Xvnc</code> includes a
+virtual framebuffer. <strong>Termux:X11 is not needed</strong>, nor is
+any graphics hardware.</p>
+<hr />
+<h2 id="packages">1. Packages</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pkg</span> install x11-repo <span class="at">-y</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pkg</span> install tigervnc openbox tint2 xterm dbus <span class="at">-y</span></span></code></pre></div>
+<ul>
+<li><code>tigervnc</code> → provides <code>Xvnc</code> (headless X
+server with built-in RFB).</li>
+<li><code>openbox</code> → lightweight window manager.</li>
+<li><code>tint2</code> → optional taskbar (removable).</li>
+<li><code>xterm</code> → default graphical terminal; replaceable with
+others.</li>
+<li><code>dbus</code> → required by some GTK applications.</li>
+</ul>
+<hr />
+<h2 id="websockify-pure-python-no-numpy">2. websockify (pure-Python, no
+numpy)</h2>
+<p><code>pip install websockify</code> pulls numpy as an optional
+dependency, which on Termux/ARM goes into native compilation and hangs
+for hours. Solution:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--break-system-packages</span> <span class="at">--no-deps</span> websockify</span></code></pre></div>
+<p>Verify:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-c</span> <span class="st">&quot;import websockify; print(&#39;ok&#39;)&quot;</span></span></code></pre></div>
+<p>Pure-Python websockify easily handles a single desktop session. numpy
+is only needed for heavy multi-client throughput (not our case).</p>
+<hr />
+<h2 id="novnc-html5-client">3. noVNC (HTML5 client)</h2>
+<p>Static files under <code>~/services/novnc/</code> (outside the web
+root, served directly by websockify):</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> <span class="va">$HOME</span>/services</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/services</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-L</span> <span class="at">-o</span> novnc.tar.gz https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="fu">tar</span> xzf novnc.tar.gz</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="fu">mv</span> noVNC-1.5.0 novnc</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> novnc.tar.gz</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="fu">ln</span> <span class="at">-sf</span> vnc.html novnc/index.html</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span></span></code></pre></div>
+<hr />
+<h2 id="vnc-authentication">4. VNC Authentication</h2>
+<p>Recommended choice: <strong>empty VNC password + auth_gate</strong>.
+The traffic is already protected by: - Xvnc loopback binding
+(<code>-localhost</code>) - bcrypt <code>auth_gate</code> cookie via
+nginx <code>auth_request</code> - End-to-end TLS from cloudflared</p>
+<p>A second password prompt is just noise. Configuration:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> <span class="va">$HOME</span>/.vnc</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> <span class="va">$HOME</span>/.vnc/passwd</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> 600 <span class="va">$HOME</span>/.vnc/passwd</span></code></pre></div>
+<p>Xvnc will then be started with <code>-SecurityTypes None</code>.</p>
+<blockquote>
+<p>If you’d rather add a VNC password on top: run
+<code>tigervncpasswd</code> and remove <code>-SecurityTypes None</code>
+from the start script.</p>
+</blockquote>
+<hr />
+<h2 id="openbox-session-xstartup">5. Openbox session (xstartup)</h2>
+<p><strong>Critical step</strong> — if this file is missing, Xvnc will
+start but show a black screen (no window manager, no apps). Create it
+with the heredoc below (do not skip):</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> <span class="va">$HOME</span>/.vnc/xstartup <span class="op">&lt;&lt; &#39;XSTART&#39;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="st">#!/data/data/com.termux/files/usr/bin/bash</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="st">unset SESSION_MANAGER</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="st">unset DBUS_SESSION_BUS_ADDRESS</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="st">export LANG=en_US.UTF-8</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="st">xsetroot -solid &quot;#0a0a0a&quot;</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="st">tint2 &amp;</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="st">xterm -geometry 100x30+50+50 -bg &quot;#0a0a0a&quot; -fg &quot;#00ff88&quot; &amp;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="st">exec openbox-session</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="op">XSTART</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x <span class="va">$HOME</span>/.vnc/xstartup</span></code></pre></div>
+<p>Verify:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-l</span> ~/.vnc/xstartup    <span class="co"># must exist, be executable</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> ~/.vnc/xstartup      <span class="co"># must show the content above</span></span></code></pre></div>
+<p>Background <code>#0a0a0a</code> and accent <code>#00ff88</code> for
+visual consistency with the rest of the apps.</p>
+<hr />
+<h2 id="start-desktop-stop-desktop-scripts">6. start-desktop /
+stop-desktop scripts</h2>
+<p><code>~/bin/start-desktop</code>:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/data/data/com.termux/files/usr/bin/bash</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># NodePulse Desktop — Xvnc + openbox + websockify (also serves noVNC)</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="va">DISPLAY_NUM</span><span class="op">=</span>1</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="va">VNC_PORT</span><span class="op">=</span>5901</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="va">WS_PORT</span><span class="op">=</span>6080</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="va">GEOMETRY</span><span class="op">=</span><span class="st">&quot;1280x720&quot;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="va">DEPTH</span><span class="op">=</span>24</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="va">NOVNC_DIR</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/services/novnc&quot;</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="va">LOG_DIR</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/tmp&quot;</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> <span class="st">&quot;</span><span class="va">$LOG_DIR</span><span class="st">&quot;</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean up previous sessions</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="co"># </span><span class="al">NOTE</span><span class="co">: no colon before the port in the websockify pattern — the actual argv</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a><span class="co"># is `websockify --web=... 6080 127.0.0.1:5901`, so &quot;websockify.*:6080&quot; misses.</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;Xvnc :</span><span class="va">$DISPLAY_NUM</span><span class="st">&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;websockify.*</span><span class="va">$WS_PORT</span><span class="st">&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> <span class="at">-f</span> /tmp/.X<span class="va">${DISPLAY_NUM}</span>-lock /tmp/.X11-unix/X<span class="va">${DISPLAY_NUM}</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a><span class="fu">sleep</span> 1</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Xvnc (loopback only, no VNC auth — protected by auth_gate)</span></span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a><span class="ex">Xvnc</span> :<span class="va">$DISPLAY_NUM</span> <span class="dt">\</span></span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">-geometry</span> <span class="st">&quot;</span><span class="va">$GEOMETRY</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">-depth</span> <span class="va">$DEPTH</span> <span class="dt">\</span></span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>    <span class="at">-rfbport</span> <span class="va">$VNC_PORT</span> <span class="dt">\</span></span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a>    <span class="at">-localhost</span> <span class="dt">\</span></span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a>    <span class="at">-SecurityTypes</span> None <span class="dt">\</span></span>
+<span id="cb9-28"><a href="#cb9-28" aria-hidden="true" tabindex="-1"></a>    <span class="at">-desktop</span> <span class="st">&quot;NodePulse&quot;</span> <span class="dt">\</span></span>
+<span id="cb9-29"><a href="#cb9-29" aria-hidden="true" tabindex="-1"></a>    <span class="op">&gt;</span> <span class="st">&quot;</span><span class="va">$LOG_DIR</span><span class="st">/xvnc.log&quot;</span> <span class="dv">2</span><span class="op">&gt;&amp;</span><span class="dv">1</span> <span class="kw">&amp;</span></span>
+<span id="cb9-30"><a href="#cb9-30" aria-hidden="true" tabindex="-1"></a><span class="fu">sleep</span> 2</span>
+<span id="cb9-31"><a href="#cb9-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-32"><a href="#cb9-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Openbox session</span></span>
+<span id="cb9-33"><a href="#cb9-33" aria-hidden="true" tabindex="-1"></a><span class="va">DISPLAY</span><span class="op">=</span>:<span class="va">$DISPLAY_NUM</span> <span class="va">$HOME</span><span class="ex">/.vnc/xstartup</span> <span class="op">&gt;</span> <span class="st">&quot;</span><span class="va">$LOG_DIR</span><span class="st">/xstartup.log&quot;</span> <span class="dv">2</span><span class="op">&gt;&amp;</span><span class="dv">1</span> <span class="kw">&amp;</span></span>
+<span id="cb9-34"><a href="#cb9-34" aria-hidden="true" tabindex="-1"></a><span class="fu">sleep</span> 1</span>
+<span id="cb9-35"><a href="#cb9-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-36"><a href="#cb9-36" aria-hidden="true" tabindex="-1"></a><span class="co"># websockify + static noVNC</span></span>
+<span id="cb9-37"><a href="#cb9-37" aria-hidden="true" tabindex="-1"></a><span class="ex">websockify</span> <span class="at">--web</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$NOVNC_DIR</span><span class="st">&quot;</span> <span class="va">$WS_PORT</span> 127.0.0.1:<span class="va">$VNC_PORT</span> <span class="dt">\</span></span>
+<span id="cb9-38"><a href="#cb9-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">&gt;</span> <span class="st">&quot;</span><span class="va">$LOG_DIR</span><span class="st">/websockify.log&quot;</span> <span class="dv">2</span><span class="op">&gt;&amp;</span><span class="dv">1</span> <span class="kw">&amp;</span></span>
+<span id="cb9-39"><a href="#cb9-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-40"><a href="#cb9-40" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;[desktop] Xvnc :</span><span class="va">$DISPLAY_NUM</span><span class="st">  |  websockify :</span><span class="va">$WS_PORT</span><span class="st">  |  noVNC </span><span class="va">$NOVNC_DIR</span><span class="st">&quot;</span></span>
+<span id="cb9-41"><a href="#cb9-41" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;[desktop] log: </span><span class="va">$LOG_DIR</span><span class="st">/{xvnc,xstartup,websockify}.log&quot;</span></span></code></pre></div>
+<p><code>~/bin/stop-desktop</code>:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/data/data/com.termux/files/usr/bin/bash</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;Xvnc :1&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;websockify.*6080&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;openbox&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pkill</span> <span class="at">-f</span> <span class="st">&quot;tint2&quot;</span> <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> <span class="at">-f</span> /tmp/.X1-lock /tmp/.X11-unix/X1 <span class="dv">2</span><span class="op">&gt;</span>/dev/null</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;[desktop] stopped&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x <span class="va">$HOME</span>/bin/start-desktop <span class="va">$HOME</span>/bin/stop-desktop</span></code></pre></div>
+<hr />
+<h2 id="nginx-integration">7. nginx integration</h2>
+<p>Add the following to the <code>server { ... }</code> block in
+<code>$PREFIX/etc/nginx/nginx.conf</code>, <strong>before</strong>
+<code>location /</code> and in the same style as <code>/cli/</code>:</p>
+<pre class="nginx"><code># NodePulse Desktop — Openbox via noVNC (WebSocket proxy)
+# Gated by the same auth_gate used by /cli/ (gate_auth cookie)
+
+# Exact match: redirect bare /desktop/ to noVNC with correct WS path+params.
+# IMPORTANT: noVNC default path=&#39;websockify&#39; builds wss://host/websockify (root),
+# but nginx only proxies under /desktop/ — must force path=desktop/websockify.
+location = /desktop/ {
+    auth_request /cli-auth.php;
+    error_page 401 = @desktop_login;
+    return 302 /desktop/vnc.html?path=desktop/websockify&amp;autoconnect=1&amp;resize=scale&amp;reconnect=1;
+}
+
+# Prefix match: proxy static files + WebSocket to websockify
+location /desktop/ {
+    auth_request /cli-auth.php;
+    error_page 401 = @desktop_login;
+
+    proxy_pass http://127.0.0.1:6080/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection &quot;upgrade&quot;;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 86400;
+    proxy_send_timeout 86400;
+    proxy_buffering off;
+}
+
+location @desktop_login {
+    return 302 $scheme://$http_host/cli-login.php;
+}</code></pre>
+<p>Notes: - <code>/cli-auth.php</code> is already <code>internal</code>
+and reads <code>$_SESSION['gate_auth']</code> (defined in
+<code>termux-setup.sh</code>, step 7, <code>nginx.conf</code>). Reused
+as-is, no duplication. - websockify serves both the static noVNC client
+and the WS channel on the same port → a single
+<code>location /desktop/</code> covers everything.</p>
+<p>Reload:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nginx</span> <span class="at">-s</span> reload</span></code></pre></div>
+<hr />
+<h2 id="start-server-stop-server-integration">8. start-server /
+stop-server integration</h2>
+<p>In <code>~/bin/start-server</code>, <strong>before</strong> the
+cloudflared/nodepulse block (nginx is already up at this point; the
+desktop stack must be ready so that the moment the tunnel opens the
+<code>/desktop/</code> endpoint is live):</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start desktop (Xvnc + openbox + websockify) — must run before nodepulse blocks</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> <span class="va">$HOME</span>/bin/start-desktop</span></code></pre></div>
+<p>In <code>~/bin/stop-server</code>, before <code>pm2 stop</code> /
+<code>pkill cloudflared</code> / <code>pkill -f nodepulse</code>:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> <span class="va">$HOME</span>/bin/stop-desktop</span></code></pre></div>
+<p>The installer finds these markers automatically and patches both
+files idempotently. After editing, <code>stop-server</code> +
+<code>start-server</code> from the local device applies the changes.</p>
+<hr />
+<h2 id="dashboard-card">9. Dashboard card</h2>
+<p><code>~/www/desktop/index.php</code> — the dashboard auto-discovers
+it via <code>is_dir()</code> (same mechanism as all other apps).</p>
+<p><strong>Do not use
+<code>header('Location: /desktop/...')</code></strong>. Under nginx →
+php-cgi/php-fpm the CGI SAPI rewrites any relative
+<code>Location:</code> to an absolute URL using backend
+<code>SERVER_PORT</code> (8080) and without <code>HTTPS</code> set — the
+browser ends up redirected to
+<code>http://host:8080/desktop/vnc.html?...</code> (plain HTTP, backend
+port), which is unreachable through cloudflared. Use an HTML-level
+redirect with a <strong>relative</strong> URL instead: the browser
+resolves it against the current document’s origin and scheme, preserving
+<code>https://</code> and the public hostname.</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode php"><code class="sourceCode php"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">&lt;?php</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co">// NodePulse Desktop — directory placeholder for dashboard auto-discovery.</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="co">// The nginx &quot;location = /desktop/&quot; exact-match handles the canonical redirect,</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co">// but dashboard links may hit /desktop/index.php directly (PHP regex match wins</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="co">// over the /desktop/ prefix). Avoid PHP&#39;s Location header: CGI SAPI rewrites</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="co">// relative URLs to http://host:8080/... using backend SERVER_PORT.</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="va">$qs</span> <span class="op">=</span> <span class="st">&#39;path=desktop/websockify&amp;autoconnect=1&amp;resize=scale&amp;reconnect=1&#39;</span><span class="ot">;</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="kw">?&gt;</span><span class="op">&lt;!</span><span class="cn">DOCTYPE</span> html<span class="op">&gt;</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>html<span class="op">&gt;</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>head<span class="op">&gt;</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>meta charset<span class="op">=</span><span class="st">&quot;utf-8&quot;</span><span class="op">&gt;</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>meta http<span class="op">-</span>equiv<span class="op">=</span><span class="st">&quot;refresh&quot;</span> content<span class="op">=</span><span class="st">&quot;0;url=vnc.html?&lt;?= </span><span class="va">$qs</span><span class="st"> ?&gt;&quot;</span><span class="op">&gt;</span></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>title<span class="op">&gt;</span>NodePulse Desktop<span class="op">&lt;/</span>title<span class="op">&gt;</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>script<span class="op">&gt;</span>location<span class="op">.</span><span class="cn">replace</span>(<span class="st">&#39;vnc.html?&lt;?= $qs ?&gt;&#39;</span>)<span class="ot">;</span><span class="op">&lt;/</span>script<span class="op">&gt;</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;/</span>head<span class="op">&gt;</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>body style<span class="op">=</span><span class="st">&quot;background:#0a0a0a;color:#00ff88;font-family:monospace;padding:2em&quot;</span><span class="op">&gt;</span></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;</span>a href<span class="op">=</span><span class="st">&quot;vnc.html?&lt;?= </span><span class="va">$qs</span><span class="st"> ?&gt;&quot;</span> style<span class="op">=</span><span class="st">&quot;color:#00ff88&quot;</span><span class="op">&gt;</span>Open Desktop →<span class="op">&lt;/</span>a<span class="op">&gt;</span></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;/</span>body<span class="op">&gt;</span></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="op">&lt;/</span>html<span class="op">&gt;</span></span></code></pre></div>
+<p>noVNC query parameters: - <code>path=desktop/websockify</code> →
+absolute WS path (matches the nginx <code>/desktop/</code> location;
+noVNC builds <code>wss://&lt;host&gt;/&lt;path&gt;</code> from host
+root, <strong>not</strong> relative to the current page). -
+<code>autoconnect=1</code> → connect immediately. -
+<code>resize=scale</code> → scale the desktop to viewport. -
+<code>reconnect=1</code> → auto-reconnect on drop.</p>
+<p>If the WS fails: DevTools → Network → inspect the actual WS URL — it
+must be <code>wss://&lt;tunnel&gt;/desktop/websockify</code>. Adjust
+<code>path=</code> accordingly.</p>
+<p>For consistent visual integration, drop a
+<code>~/www/desktop/icon.png</code> into the folder (the dashboard card
+layout picks it up automatically).</p>
+<hr />
+<h2 id="verification">10. Verification</h2>
+<ol type="1">
+<li><code>bash ~/bin/start-server</code> → nginx + cloudflared +
+desktop</li>
+<li>Open <code>https://&lt;tunnel&gt;.trycloudflare.com/</code> → login
+via auth_gate</li>
+<li>Click the “Desktop” card (or go directly to
+<code>/desktop/</code>)</li>
+<li>noVNC connects automatically → openbox appears with tint2 +
+xterm</li>
+<li>Right-click on the background → openbox menu; other GUI apps
+installed via <code>pkg install</code> will show up in the menu after
+the next X session restart</li>
+</ol>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Symptom</th>
+<th>Cause / Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Black screen, noVNC UI visible</td>
+<td>Most common cause: <code>~/.vnc/xstartup</code> is missing or not
+executable. Check <code>~/tmp/xstartup.log</code> — if it says “No such
+file or directory”, go back to step 5 and recreate it via the
+heredoc.</td>
+</tr>
+<tr class="even">
+<td>Black screen, xstartup exists</td>
+<td><code>openbox-session</code> may not be in PATH. Check
+<code>~/tmp/xstartup.log</code>, verify
+<code>which openbox-session</code>; if missing, reinstall:
+<code>pkg reinstall openbox</code>. As a secondary cause, X
+authentication may be blocking clients — add
+<code>-auth $HOME/.vnc/xauth</code> to Xvnc and prepend
+<code>XAUTHORITY=$HOME/.vnc/xauth</code> to the xstartup
+invocation.</td>
+</tr>
+<tr class="odd">
+<td>“No password configured for VNC Auth”</td>
+<td>Xvnc wants a <code>passwd</code> file even with
+<code>-SecurityTypes None</code>. Fix:
+<code>touch $HOME/.vnc/passwd; chmod 600 $HOME/.vnc/passwd</code>.</td>
+</tr>
+<tr class="even">
+<td>“Connection refused” from websockify</td>
+<td>Xvnc not yet ready on :5901 when websockify starts. Increase
+<code>sleep 2</code> to <code>sleep 3-4</code> in
+<code>start-desktop</code>.</td>
+</tr>
+<tr class="odd">
+<td>WebSocket closes right after handshake</td>
+<td>Wrong WS path in the <code>path=</code> parameter. Open browser
+console → Network tab → inspect the WS URL. It must be
+<code>wss://&lt;tunnel&gt;/desktop/websockify</code>.</td>
+</tr>
+<tr class="even">
+<td>Browser redirected to
+<code>http://&lt;host&gt;:8080/desktop/vnc.html</code> (HTTP, port
+8080)</td>
+<td><code>~/www/desktop/index.php</code> is using
+<code>header('Location: /desktop/...')</code>. The php-cgi SAPI rewrites
+the relative Location to absolute with backend <code>SERVER_PORT</code>.
+Replace with the HTML meta-refresh + JS variant in section 9 (uses
+relative <code>vnc.html?...</code> so the browser resolves it against
+the current HTTPS origin).</td>
+</tr>
+<tr class="odd">
+<td><code>/desktop/index.php</code> hit by PHP instead of the nginx
+<code>/desktop/</code> proxy</td>
+<td>Expected: the global <code>location ~ \.php$</code> regex wins over
+the <code>/desktop/</code> prefix. The placeholder
+<code>index.php</code> in section 9 handles this case correctly by
+redirecting to <code>vnc.html</code> without any PHP
+<code>Location</code> header.</td>
+</tr>
+<tr class="even">
+<td>Cursor not visible</td>
+<td>Add <code>xsetroot -cursor_name left_ptr</code> to
+<code>xstartup</code>.</td>
+</tr>
+<tr class="odd">
+<td>Poor performance</td>
+<td>Use <code>-depth 16</code> instead of 24; set
+<code>GEOMETRY="1024x600"</code>; in the noVNC URL add
+<code>&amp;quality=4&amp;compression=9</code>.</td>
+</tr>
+<tr class="even">
+<td>Audio</td>
+<td>Not supported via VNC/noVNC. Remote audio would require Xpra or
+PulseAudio over TCP (out of scope).</td>
+</tr>
+<tr class="odd">
+<td>Copy/paste browser ↔︎ desktop</td>
+<td>Works if you launch <code>vncconfig -iconic &amp;</code> in
+<code>xstartup</code> (the <code>vncconfig</code> binary ships with
+<code>tigervnc</code>, already installed).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="security">Security</h2>
+<ul>
+<li><strong>Loopback binding</strong>: Xvnc (<code>-localhost</code>)
+and websockify (default) listen only on 127.0.0.1 → unreachable outside
+the device.</li>
+<li><strong>Application-layer gate</strong>: bcrypt
+<code>auth_gate</code> cookie (via <code>auth_request</code>) + optional
+VNC password.</li>
+<li><strong>End-to-end TLS</strong>: cloudflared guarantees WSS from
+browser to device.</li>
+<li><strong>No extra public TCP port</strong>: everything rides the
+existing cloudflared tunnel.</li>
+<li><strong>Minimal attack surface</strong>: Xvnc is an X server — it
+does not expose a shell or file access by default. The
+<code>openbox</code> WM has no network services.</li>
+</ul>
+<hr />
+<h2 id="future-extensions">Future extensions</h2>
+<ul>
+<li><strong>Useful GUI apps</strong>:
+<code>pkg install geany mousepad pcmanfm gimp</code> (check availability
+with <code>pkg search</code> — the x11-repo catalogue is smaller than
+Debian’s).</li>
+<li><strong>Session persistence</strong>: the Xvnc session persists
+until you kill it. Detach browser/device, reattach later, you get the
+same windows and state back.</li>
+<li><strong>Future multi-user</strong>: for concurrent sessions, use
+displays <code>:2</code>, <code>:3</code> etc. with separate websockify
+instances on distinct ports (<code>6081</code>, <code>6082</code>). Out
+of scope for this note — revisit when/if NodePulse becomes
+multi-account.</li>
+<li><strong>Clipboard bridge</strong>: <code>autocutsel</code>
+(<code>pkg install autocutsel</code>) synchronizes CLIPBOARD ↔︎ PRIMARY
+on the Xvnc side, useful if <code>vncconfig</code> alone isn’t
+enough.</li>
+</ul>
+<hr />
+<h2 id="integrated-conventions">Integrated conventions</h2>
+<ul>
+<li><strong>Theme</strong>: <code>#0a0a0a</code> background,
+<code>#00ff88</code> accent in xterm (consistent with the
+dashboard).</li>
+<li><strong>Logs</strong>: <code>~/tmp/xvnc.log</code>,
+<code>~/tmp/xstartup.log</code>, <code>~/tmp/websockify.log</code>.</li>
+<li><strong>PHP version</strong>: the
+<code>~/www/desktop/index.php</code> card runs under PHP 8.* (it’s not
+in <code>nodepulse/</code>, so no PHP 5.6 constraint).</li>
+<li><strong>Auth gate reuse</strong>: no duplicate
+<code>cli-auth.php</code> / <code>cli-login.php</code> — same cookie,
+same single-login UX as all other protected apps.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,87 @@
+#!/usr/bin/bash
+
+#============================================================
+# start-server
+# Starts nginx + php-cgi + Cloudflare tunnel.
+# Uses standalone Windows binaries from ~/nodepulse-bin/.
+# Adapted for MSYS64 on Windows.
+#============================================================
+
+NP_DIR="$HOME/nodepulse-bin"
+PHP_DIR="$NP_DIR/php"
+NGINX_DIR="$NP_DIR/nginx"
+CFLARED_BIN="$NP_DIR/cloudflared.exe"
+
+echo ""
+echo "================================"
+echo "  STARTING SERVER (nginx mode)"
+echo "================================"
+echo ""
+
+# Stop everything cleanly (kills nodepulse loop, maintenance daemon, cloudflared, etc.)
+STOP_SCRIPT="$(dirname "$(readlink -f "$0")")/stop-server"
+if [ -f "$STOP_SCRIPT" ]; then
+    bash "$STOP_SCRIPT"
+elif [ -f "$HOME/bin/stop-server" ]; then
+    bash "$HOME/bin/stop-server"
+else
+    # Fallback: manual cleanup
+    taskkill //F //IM cloudflared.exe > /dev/null 2>&1
+    taskkill //F //IM nginx.exe > /dev/null 2>&1
+    taskkill //F //IM php-cgi.exe > /dev/null 2>&1
+    taskkill //F //IM php.exe > /dev/null 2>&1
+fi
+sleep 1
+
+# PHP test file
+echo '<?php echo "PHP_OK"; ?>' > ~/www/_phptest.php
+
+# Start php-cgi pool (4 workers on ports 9000-9003)
+echo "[...] Starting php-cgi pool (4 workers)..."
+for port in 9000 9001 9002 9003; do
+    "$PHP_DIR/php-cgi.exe" -d opcache.enable=0 -b 127.0.0.1:$port &
+done
+sleep 1
+
+# Start nginx (must cd to its directory on Windows)
+echo "[...] Starting nginx..."
+(cd "$NGINX_DIR" && ./nginx.exe) &
+sleep 2
+
+# Verify PHP execution
+PHPTEST=$(curl -s http://127.0.0.1:8080/_phptest.php 2>/dev/null)
+if [ "$PHPTEST" != "PHP_OK" ]; then
+    echo "[ERROR] PHP execution failed (HTTP: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/_phptest.php))"
+    echo "        Check: ~/www/index.php exists? nginx error log?"
+    rm -f ~/www/_phptest.php
+    exit 1
+fi
+
+rm -f ~/www/_phptest.php
+
+# Start terminal daemon
+echo "[...] Starting terminal daemon..."
+DAEMON_PID_FILE="$HOME/tmp/.terminal/daemon.pid"
+if [ -f "$DAEMON_PID_FILE" ]; then
+    DAEMON_PID=$(cat "$DAEMON_PID_FILE")
+    if [ -n "$DAEMON_PID" ]; then
+        taskkill //F //T //PID "$DAEMON_PID" > /dev/null 2>&1
+    fi
+    rm -f "$DAEMON_PID_FILE"
+fi
+taskkill //F //IM php.exe > /dev/null 2>&1
+pkill -f "terminal/daemon" 2>/dev/null
+sleep 1
+"$PHP_DIR/php.exe" -d opcache.enable=0 ~/www/terminal/daemon.php > ~/tmp/terminal-daemon.log 2>&1 &
+echo "[OK] Terminal daemon started (log: ~/tmp/terminal-daemon.log)"
+
+echo "[OK] Server running on port 8080"
+
+# Start cloudflared with NodePulse
+echo "[...] Starting Cloudflare tunnel + NodePulse..."
+echo ""
+if [ -f "$HOME/bin/nodepulse" ]; then
+    bash "$HOME/bin/nodepulse"
+else
+    "$CFLARED_BIN" tunnel --url http://127.0.0.1:8080
+fi
