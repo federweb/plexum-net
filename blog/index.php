@@ -97,6 +97,21 @@ function pf(): string { return DATA_DIR . '/posts.json'; }
 function cf(): string { return DATA_DIR . '/comments.json'; }
 function tf(): string { return DATA_DIR . '/tags.json'; }
 
+// Tag list = derived from posts. Always rebuild from current post tags
+// to purge orphans (tags removed from posts but lingering in tags.json).
+function rebuild_tags(): void {
+    $posts = np_read(pf());
+    $tags = [];
+    foreach ($posts as $p) {
+        foreach ($p['tags'] ?? [] as $t) {
+            $t = trim($t);
+            if ($t !== '' && !in_array($t, $tags, true)) $tags[] = $t;
+        }
+    }
+    sort($tags, SORT_NATURAL | SORT_FLAG_CASE);
+    np_write(tf(), $tags);
+}
+
 // ── Markdown ────────────────────────────────────────────
 function md_render(string $t): string {
     $t = h($t);
@@ -153,7 +168,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pp = np_read(pf());
             $id = $_POST['id'] ?: uid();
             $title = trim($_POST['title'] ?? '') ?: 'Untitled';
-            $ptags = array_values(array_filter(array_map('trim', explode(',', $_POST['tags'] ?? ''))));
+            // Split on whitespace OR comma; strip leading "#"; dedup.
+            $rawParts = preg_split('/[\s,]+/', $_POST['tags'] ?? '');
+            $ptags = [];
+            foreach ($rawParts as $rt) {
+                $rt = ltrim(trim($rt), '#');
+                if ($rt !== '' && !in_array($rt, $ptags, true)) $ptags[] = $rt;
+            }
             $pp[$id] = [
                 'id' => $id, 'title' => $title, 'slug' => slugify($title),
                 'body' => $_POST['body'] ?? '', 'tags' => $ptags,
@@ -162,14 +183,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'updated' => gmdate('Y-m-d\TH:i:s\Z')
             ];
             np_write(pf(), $pp);
-            $at = np_read(tf());
-            foreach ($ptags as $tg) { if ($tg && !in_array($tg, $at)) $at[] = $tg; }
-            np_write(tf(), $at);
+            rebuild_tags();
             header('Location: ?admin'); break;
 
         case 'del_post':
             $pp = np_read(pf()); unset($pp[$_POST['id'] ?? '']); np_write(pf(), $pp);
             $cc = np_read(cf()); unset($cc[$_POST['id'] ?? '']); np_write(cf(), $cc);
+            rebuild_tags();
             header('Location: ?admin'); break;
 
         case 'toggle':
@@ -187,14 +207,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ?admin=comments'); break;
 
         case 'add_tag':
-            $tg = mb_strtolower(trim($_POST['tag'] ?? ''));
-            if ($tg) { $at = np_read(tf()); if (!in_array($tg, $at)) { $at[] = $tg; np_write(tf(), $at); } }
+            $tg = ltrim(trim($_POST['tag'] ?? ''), '#');
+            if ($tg !== '') { $at = np_read(tf()); if (!in_array($tg, $at, true)) { $at[] = $tg; np_write(tf(), $at); } }
             header('Location: ?admin=tags'); break;
 
         case 'del_tag':
-            $at = np_read(tf());
-            $at = array_values(array_filter($at, fn($t) => $t !== ($_POST['tag'] ?? '')));
-            np_write(tf(), $at);
+            $tg = $_POST['tag'] ?? '';
+            if ($tg !== '') {
+                $pp = np_read(pf());
+                $changed = false;
+                foreach ($pp as $pid => $post) {
+                    if (in_array($tg, $post['tags'] ?? [], true)) {
+                        $pp[$pid]['tags'] = array_values(array_filter(
+                            $post['tags'],
+                            function($t) use ($tg) { return $t !== $tg; }
+                        ));
+                        $changed = true;
+                    }
+                }
+                if ($changed) np_write(pf(), $pp);
+                rebuild_tags();
+            }
+            header('Location: ?admin=tags'); break;
+
+        case 'clean_tags':
+            rebuild_tags();
             header('Location: ?admin=tags'); break;
 
         case 'upload':
@@ -318,6 +355,19 @@ td a{color:var(--text)}td a:hover{color:var(--accent)}
 .badge-pub{background:#0d1f0d;color:var(--accent)}
 .badge-draft{background:#1f1f0d;color:#ffaa00}
 
+/* Tag chips (admin editor) */
+.tag-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#0d0d0d;border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:12px;transition:border-color .2s;cursor:text}
+.tag-chips:focus-within{border-color:var(--accent)}
+.tag-chips input{flex:1;min-width:160px;background:transparent;border:none;padding:4px 6px;color:var(--text);font-size:14px;outline:none;margin:0}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;background:#0d1f0d;color:var(--accent);padding:3px 4px 3px 8px;border-radius:4px;font-size:12px;font-weight:600;letter-spacing:.3px}
+.tag-chip button{background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:0 4px;line-height:1;border-radius:3px}
+.tag-chip button:hover{color:var(--danger);background:#1a3a1a}
+
+/* Site footer (public) */
+.site-footer{border-top:1px solid var(--border);padding:28px 0;margin-top:48px;background:var(--card)}
+.footer-tags{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.footer-tags a.tag.active{background:var(--accent);color:#000}
+
 /* Misc */
 .hp{position:absolute;left:-9999px}
 .empty{color:var(--muted);text-align:center;padding:40px 0}
@@ -374,9 +424,13 @@ td a{color:var(--text)}td a:hover{color:var(--accent)}
 
     <input type="text" name="title" value="<?= h($p['title']) ?>" placeholder="Post title" required autofocus>
 
-    <input type="text" name="tags" id="tagInput" value="<?= h(implode(', ', $p['tags'] ?? [])) ?>" placeholder="tag1, tag2, tag3">
+    <div id="tagChips" class="tag-chips">
+        <input type="text" id="tagInputNew" placeholder="type tag and press space &middot; backspace removes the last chip" autocomplete="off">
+    </div>
+    <input type="hidden" name="tags" id="tagsHidden" value="<?= h(implode(',', $p['tags'] ?? [])) ?>">
     <?php if ($tags): ?>
-    <div style="margin:-8px 0 12px;display:flex;flex-wrap:wrap;gap:4px">
+    <div style="margin:-4px 0 12px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+        <span style="font-size:11px;color:var(--muted);margin-right:4px">Existing:</span>
         <?php foreach ($tags as $t): ?>
         <span class="tag" style="cursor:pointer" onclick="addTag('<?= h($t) ?>')"><?= h($t) ?></span>
         <?php endforeach; ?>
@@ -417,7 +471,14 @@ td a{color:var(--text)}td a:hover{color:var(--accent)}
 </form>
 
 <?php elseif ($adm === 'tags'): // ── Tags ── ?>
-<div class="sect-title">Tag</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div class="sect-title" style="margin:0">Tag</div>
+    <form method="POST" onsubmit="return confirm('Rimuovere i tag non usati da nessun post?')">
+        <?= csrf() ?>
+        <input type="hidden" name="action" value="clean_tags">
+        <button type="submit" class="btn btn-ghost btn-sm">Clean unused</button>
+    </form>
+</div>
 <form method="POST" style="display:flex;gap:8px;margin-bottom:20px">
     <?= csrf() ?>
     <input type="hidden" name="action" value="add_tag">
@@ -562,9 +623,7 @@ if (!$has_comments): ?>
         <div class="desc"><?= h(SITE_DESC) ?></div>
     </div>
     <nav>
-        <?php foreach (array_slice($tags, 0, 8) as $t): ?>
-        <a href="?tag=<?= urlencode($t) ?>" class="<?= $tag_filter === $t ? 'active' : '' ?>">#<?= h($t) ?></a>
-        <?php endforeach; ?>
+        <a href="?" class="<?= !$tag_filter && !$post_id ? 'active' : '' ?>">Home</a>
         <a href="?admin" style="color:var(--accent)">Admin</a>
     </nav>
 </div>
@@ -684,6 +743,18 @@ if (!$has_comments): ?>
 <?php endif; ?>
 </div>
 
+<?php if ($tags): ?>
+<footer class="site-footer">
+<div class="wrap">
+    <div class="footer-tags">
+        <?php foreach ($tags as $t): ?>
+        <a href="?tag=<?= urlencode($t) ?>" class="tag <?= $tag_filter === $t ? 'active' : '' ?>">#<?= h($t) ?></a>
+        <?php endforeach; ?>
+    </div>
+</div>
+</footer>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <script>
@@ -728,12 +799,77 @@ function copyMd(path){
     el.textContent='Copied!';
     setTimeout(function(){el.textContent=orig},1500);
 }
-function addTag(tag){
-    var input=document.getElementById('tagInput');
-    if(!input)return;
-    var cur=input.value.split(',').map(function(s){return s.trim()}).filter(Boolean);
-    if(cur.indexOf(tag)===-1){cur.push(tag);input.value=cur.join(', ')}
-}
+/* Chip-based tag input.
+   Space/Enter/comma  → finalize current word as a chip.
+   Backspace/Delete   → remove the last chip when input is empty.
+   Existing-tag click → window.addTag(name) inserts a chip. */
+(function(){
+    var container=document.getElementById('tagChips');
+    var input=document.getElementById('tagInputNew');
+    var hidden=document.getElementById('tagsHidden');
+    if(!container||!input||!hidden){window.addTag=function(){};return}
+
+    // Parse incoming value tolerantly: split on whitespace OR comma, strip "#".
+    var raw=(hidden.value||'').split(/[\s,]+/);
+    var tags=[];
+    for(var i=0;i<raw.length;i++){
+        var t=raw[i].trim().replace(/^#+/,'');
+        if(t&&tags.indexOf(t)===-1)tags.push(t);
+    }
+
+    function render(){
+        var chips=container.querySelectorAll('.tag-chip');
+        for(var j=0;j<chips.length;j++)chips[j].remove();
+        tags.forEach(function(tag,idx){
+            var chip=document.createElement('span');
+            chip.className='tag-chip';
+            chip.textContent=tag;
+            var btn=document.createElement('button');
+            btn.type='button';
+            btn.textContent='×';
+            btn.setAttribute('aria-label','remove '+tag);
+            btn.addEventListener('click',function(){removeTag(idx)});
+            chip.appendChild(btn);
+            container.insertBefore(chip,input);
+        });
+        hidden.value=tags.join(',');
+    }
+
+    function addTag(t){
+        t=(t||'').trim().replace(/^#+/,'').replace(/[\s,]+/g,'');
+        if(!t)return;
+        if(tags.indexOf(t)!==-1)return;
+        tags.push(t);
+        render();
+    }
+
+    function removeTag(i){
+        if(i<0||i>=tags.length)return;
+        tags.splice(i,1);
+        render();
+    }
+
+    input.addEventListener('keydown',function(e){
+        if(e.key===' '||e.key==='Enter'||e.key===','){
+            e.preventDefault();
+            if(input.value.trim()){addTag(input.value);input.value=''}
+        }else if((e.key==='Backspace'||e.key==='Delete')&&!input.value&&tags.length){
+            e.preventDefault();
+            removeTag(tags.length-1);
+        }
+    });
+
+    input.addEventListener('blur',function(){
+        if(input.value.trim()){addTag(input.value);input.value=''}
+    });
+
+    container.addEventListener('click',function(e){
+        if(e.target===container)input.focus();
+    });
+
+    window.addTag=addTag;
+    render();
+})();
 </script>
 <script src="/nodepulse-sw.js"></script>
 </body>

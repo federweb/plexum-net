@@ -51,17 +51,4 @@ EOF
 
 chmod +x "$HOME/.config/openbox/autostart"
 
-
-echo "INSTALL GOOGLE CHROME"
-
-if command -v google-chrome-stable &>/dev/null; then
-    skip "google-chrome-stable already installed"
-else
-    wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-        -O /tmp/chrome.deb || fail "failed to download Chrome .deb"
-    apt-get install -y /tmp/chrome.deb || fail "apt-get install chrome.deb failed"
-    rm -f /tmp/chrome.deb
-    ok "google-chrome-stable installed"
-fi
-
 echo "[+] Done. Restart the server, close powershell and then "wsl -d Nodepulse" and "session start" to apply the desktop config"
