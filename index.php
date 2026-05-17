@@ -248,6 +248,16 @@ if ($np_node_id && file_exists($np_directory_file)) {
 
         .node-info-item .value a:hover { text-decoration: underline; }
 
+        .node-info-item--copy {
+            cursor: pointer;
+            transition: opacity .15s ease;
+        }
+        .node-info-item--copy:hover { opacity: .75; }
+        .node-info-item--copy.copied .label,
+        .node-info-item--copy.copied .value {
+            color: var(--accent);
+        }
+
         /* ── Card icon ───────────────────────────────────────── */
         .card-icon {
             width: 48px;
@@ -367,7 +377,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
         <div class="node-info">
             <?php if ($np_node_id || $np_node_url): ?>
                 <?php if ($np_node_id): ?>
-                <div class="node-info-item">
+                <div class="node-info-item node-info-item--copy" id="np-node-id-item" data-copy="<?php echo htmlspecialchars($np_node_id); ?>" title="Click to copy">
                     <span class="label">Node ID</span>
                     <span class="value"><?php echo htmlspecialchars($np_node_id); ?></span>
                 </div>
@@ -563,5 +573,47 @@ if ($np_node_id && file_exists($np_directory_file)) {
     </footer>
 
 <script src="/nodepulse-sw.js"></script>
+<script>
+(function () {
+    var el = document.getElementById('np-node-id-item');
+    if (!el) return;
+    var valueEl = el.querySelector('.value');
+    var labelEl = el.querySelector('.label');
+    var originalLabel = labelEl ? labelEl.textContent : '';
+    var resetTimer = null;
+
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+
+    el.addEventListener('click', function () {
+        var text = el.getAttribute('data-copy') || (valueEl ? valueEl.textContent : '');
+        if (!text) return;
+        var done = function () {
+            el.classList.add('copied');
+            if (labelEl) labelEl.textContent = 'Copied!';
+            clearTimeout(resetTimer);
+            resetTimer = setTimeout(function () {
+                el.classList.remove('copied');
+                if (labelEl) labelEl.textContent = originalLabel;
+            }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+        } else {
+            fallbackCopy(text);
+            done();
+        }
+    });
+})();
+</script>
 </body>
 </html>
