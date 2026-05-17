@@ -44,11 +44,11 @@ function To-WslPath {
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  NodePulse — WSL2 Distro Installer"        -ForegroundColor Cyan
+Write-Host "  NodePulse - WSL2 Distro Installer"        -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Prerequisites ─────────────────────────────────────────
+# --- Prerequisites ---------------------------------------
 
 if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
     Write-Err "WSL2 not found. Open PowerShell as Admin and run: wsl --install"
@@ -57,7 +57,7 @@ if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
 $wslVersion = (wsl --status 2>$null) -join " "
 Write-OK "WSL available"
 
-# ── Check if the distro already exists ───────────────────
+# --- Check if the distro already exists ------------------
 
 $existing = (wsl --list --quiet 2>$null) |
     ForEach-Object { $_ -replace "`0","" } |
@@ -72,7 +72,7 @@ if ($existing) {
     Write-OK "Distro removed."
 }
 
-# ── Check setup files ─────────────────────────────────────
+# --- Check setup files -----------------------------------
 
 $requiredFiles = @("wsl2-setup.sh","nodepulse.sh","start-server","stop-server","server-status")
 foreach ($f in $requiredFiles) {
@@ -81,7 +81,7 @@ foreach ($f in $requiredFiles) {
     }
 }
 
-# ── Download rootfs ───────────────────────────────────────
+# --- Download rootfs -------------------------------------
 
 if (-not (Test-Path $ROOTFS_FILE)) {
     Write-Step "Downloading Ubuntu 24.04 WSL rootfs (~200MB)..."
@@ -95,7 +95,7 @@ if (-not (Test-Path $ROOTFS_FILE)) {
     Write-OK "Rootfs already cached: $ROOTFS_FILE"
 }
 
-# ── Create directory and import distro ───────────────────
+# --- Create directory and import distro ------------------
 
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
 Write-OK "Installation directory: $INSTALL_DIR"
@@ -105,7 +105,7 @@ wsl --import $DISTRO_NAME $INSTALL_DIR $ROOTFS_FILE --version 2
 if ($LASTEXITCODE -ne 0) { Write-Err "wsl --import failed (exit $LASTEXITCODE)" }
 Write-OK "Distro '$DISTRO_NAME' imported."
 
-# ── Copy setup files into the distro ─────────────────────
+# --- Copy setup files into the distro --------------------
 # Note: at this point automount is still active, so
 # we can use /mnt/c/ to copy the files.
 
@@ -133,7 +133,7 @@ if (Test-Path $CLI_DIR) {
 
 Write-OK "Files copied to $tmpDir"
 
-# ── Run the setup ─────────────────────────────────────────
+# --- Run the setup ---------------------------------------
 
 Write-Host ""
 Write-Step "Running wsl2-setup.sh inside '$DISTRO_NAME'..."
@@ -146,21 +146,21 @@ if ($LASTEXITCODE -ne 0) {
     Write-Err "Setup failed (exit $LASTEXITCODE). Check the output above."
 }
 
-# ── Restart distro to apply wsl.conf ─────────────────────
+# --- Restart distro to apply wsl.conf --------------------
 
 Write-Host ""
 Write-Step "Restarting '$DISTRO_NAME' to apply C: isolation..."
 wsl --terminate $DISTRO_NAME
 Start-Sleep -Seconds 3
-Write-OK "Distro restarted — C: is no longer mounted."
+Write-OK "Distro restarted - C: is no longer mounted."
 
-# ── Cleanup ───────────────────────────────────────────────
+# --- Cleanup ---------------------------------------------
 
 Write-Step "Cleaning up temporary setup files..."
 wsl -d $DISTRO_NAME -- bash -c "rm -rf $tmpDir /tmp/cli 2>/dev/null || true"
 Write-OK "Cleanup complete."
 
-# ── Summary ───────────────────────────────────────────────
+# --- Summary ---------------------------------------------
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
