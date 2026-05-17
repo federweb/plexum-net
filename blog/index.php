@@ -127,8 +127,9 @@ function md_render(string $t): string {
     $t = preg_replace('/\*(.+?)\*/', '<em>$1</em>', $t);
     $t = preg_replace('/^> (.+)$/m', '<blockquote>$1</blockquote>', $t);
     $t = preg_replace('/^[\-\*] (.+)$/m', '<li>$1</li>', $t);
-    $t = preg_replace('/((?:<li>[^<]*<\/li>\s*)+)/s', '<ul>$1</ul>', $t);
+    $t = preg_replace('/((?:<li>[\s\S]*?<\/li>\s*)+)/s', '<ul>$1</ul>', $t);
     $t = preg_replace('/^---+$/m', '<hr>', $t);
+    $t = preg_replace('/  +\n/', "<br>\n", $t);
     $t = preg_replace('/\n{2,}/', '</p><p>', $t);
     $t = '<p>' . $t . '</p>';
     $t = preg_replace('/<p>\s*(<(?:h[1-4]|ul|pre|blockquote|hr)[^>]*>)/s', '$1', $t);
@@ -302,6 +303,7 @@ a.tag:hover{background:#1a3a1a}
 
 /* Content */
 .content{line-height:1.8;font-size:15px}
+.content p{margin:12px 0}
 .content img{max-width:100%;border-radius:6px;margin:16px 0;display:block}
 .content pre{background:#161616;padding:16px;border-radius:6px;overflow-x:auto;margin:16px 0;border:1px solid var(--border)}
 .content code{font-family:'SF Mono',Consolas,'Courier New',monospace;font-size:13px}
@@ -778,7 +780,9 @@ function mdToHtml(t){
     t=t.replace(/\*(.+?)\*/g,'<em>$1</em>');
     t=t.replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>');
     t=t.replace(/^[\-\*] (.+)$/gm,'<li>$1</li>');
+    t=t.replace(/((?:<li>[\s\S]*?<\/li>\s*)+)/g,'<ul>$1</ul>');
     t=t.replace(/^---+$/gm,'<hr>');
+    t=t.replace(/  +\n/g,'<br>\n');
     t=t.replace(/\n{2,}/g,'</p><p>');
     return '<p>'+t+'</p>';
 }
