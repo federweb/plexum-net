@@ -599,7 +599,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
         if (!text) return;
         var done = function () {
             el.classList.add('copied');
-            if (labelEl) labelEl.textContent = 'Copied!';
+            if (labelEl) labelEl.textContent = 'Copied !';
             clearTimeout(resetTimer);
             resetTimer = setTimeout(function () {
                 el.classList.remove('copied');
