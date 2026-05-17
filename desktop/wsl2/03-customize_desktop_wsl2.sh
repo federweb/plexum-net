@@ -148,6 +148,43 @@ else
     ok "google-chrome-stable installed"
 fi
 
+# ── 2b) --no-sandbox wrappers (required under WSL2 as root) ─────
+# Chrome cannot use Linux user-namespaces from uid 0 on WSL2: the sandbox
+# fails silently and the process exits without a window. Thin wrapper scripts
+# in /usr/local/bin (ahead of /usr/bin in PATH) ensure every caller
+# (xdg-open, exo-open, scripts) automatically gets --no-sandbox.
+place "/usr/local/bin/google-chrome" 755 <<'EOF'
+#!/bin/bash
+exec /usr/bin/google-chrome-stable --no-sandbox "$@"
+EOF
+place "/usr/local/bin/google-chrome-stable" 755 <<'EOF'
+#!/bin/bash
+exec /usr/bin/google-chrome-stable --no-sandbox "$@"
+EOF
+
+# ── 2c) Local .desktop with --no-sandbox + set as default browser ─
+# The system google-chrome.desktop has plain Exec= lines without --no-sandbox:
+# Chrome exits silently when called via xdg-open. We write a user-level
+# override so update-desktop-database picks it up with priority over the
+# system file, and register it as the default handler for http/https.
+CHROME_DESKTOP="$HOME/.local/share/applications/google-chrome.desktop"
+mkdir -p "$(dirname "$CHROME_DESKTOP")"
+if [ -f /usr/share/applications/google-chrome.desktop ]; then
+    cp /usr/share/applications/google-chrome.desktop "$CHROME_DESKTOP"
+    sed -i \
+        -e 's|Exec=/usr/bin/google-chrome-stable %U$|Exec=/usr/bin/google-chrome-stable --no-sandbox %U|' \
+        -e 's|Exec=/usr/bin/google-chrome-stable$|Exec=/usr/bin/google-chrome-stable --no-sandbox|' \
+        -e 's|Exec=/usr/bin/google-chrome-stable --incognito$|Exec=/usr/bin/google-chrome-stable --no-sandbox --incognito|' \
+        "$CHROME_DESKTOP"
+    ok "$CHROME_DESKTOP (--no-sandbox)"
+fi
+xdg-settings set default-web-browser google-chrome.desktop   2>/dev/null || true
+xdg-mime default google-chrome.desktop x-scheme-handler/http  2>/dev/null || true
+xdg-mime default google-chrome.desktop x-scheme-handler/https 2>/dev/null || true
+$SUDO update-alternatives --set x-www-browser /usr/bin/google-chrome-stable 2>/dev/null || true
+update-desktop-database "$HOME/.local/share/applications"     2>/dev/null || true
+ok "Chrome set as default browser (http / https)"
+
 # ─────────────────────────────────────────────────────────────
 # STEP 3 — Visual Studio Code (from Microsoft apt repo)
 # ─────────────────────────────────────────────────────────────
@@ -993,7 +1030,8 @@ DESKTOP_ICONS=(
 for f in \
     "$DESKTOP_DIR/thunar.desktop" \
     "$DESKTOP_DIR/pcmanfm.desktop" \
-    "$DESKTOP_DIR/code.desktop"; do
+    "$DESKTOP_DIR/code.desktop" \
+    "$DESKTOP_DIR/File Manager.desktop"; do
     if [ -f "$f" ]; then
         rm -f "$f" && ok "removed obsolete $(basename "$f")"
     fi
@@ -1043,26 +1081,6 @@ if [ -f "$DESKTOP_DIR/Terminale.desktop" ] && \
     sed -i 's|^Exec=zutty.*|Exec=xfce4-terminal|' "$DESKTOP_DIR/Terminale.desktop"
     ok "Desktop/Terminale.desktop (zutty → xfce4-terminal)"
 fi
-
-# Custom "File Manager" launcher — single Thunar-backed icon on the
-# desktop. We write it directly (rather than copying thunar.desktop)
-# so the visible name and metadata stay under our control.
-place "$DESKTOP_DIR/File Manager.desktop" 755 <<'EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=File Manager
-GenericName=File Manager
-Comment=Browse the file system with the file manager
-Exec=thunar %F
-Icon=org.xfce.thunar
-Terminal=false
-StartupNotify=true
-Categories=System;Utility;Core;GTK;FileTools;FileManager;
-MimeType=inode/directory;
-EOF
-command -v gio &>/dev/null && \
-    gio set "$DESKTOP_DIR/File Manager.desktop" "metadata::trusted" true 2>/dev/null || true
 
 # Custom "Visual Studio Code" launcher — the system code.desktop uses a plain
 # `Exec=code %F` wrapper that fails silently as root (missing --no-sandbox and
@@ -1153,6 +1171,9 @@ check "xfce4-taskmanager binary"     command -v xfce4-taskmanager
 check "xfce4-terminal binary"        command -v xfce4-terminal
 check "dunst binary"                 command -v dunst
 check "google-chrome-stable binary"  command -v google-chrome-stable
+check "google-chrome wrapper (+x)"         test -x "/usr/local/bin/google-chrome"
+check "google-chrome-stable wrapper (+x)"  test -x "/usr/local/bin/google-chrome-stable"
+check "chrome .desktop --no-sandbox"       grep -q "no-sandbox" "$HOME/.local/share/applications/google-chrome.desktop" 2>/dev/null
 check "code binary"                  command -v code
 check "openbox/autostart (+x)"       test -x "$HOME/.config/openbox/autostart"
 check "openbox/rc.xml"               test -f "$HOME/.config/openbox/rc.xml"
@@ -1173,7 +1194,6 @@ check "helpers.rc"                   test -f "$HOME/.config/xfce4/helpers.rc"
 check "code-launch (+x)"             test -x "/usr/local/bin/code-launch"
 check "code-open.desktop"            test -f "$HOME/.local/share/applications/code-open.desktop"
 check "~/Desktop directory"          test -d "$HOME/Desktop"
-check "Desktop/File Manager.desktop" test -f "$HOME/Desktop/File Manager.desktop"
 check "Desktop/Google Chrome.desktop" test -f "$HOME/Desktop/Google Chrome.desktop"
 
 echo ""
