@@ -1,4 +1,4 @@
-#============================================================
+﻿#============================================================
 # wsl2-import.ps1
 # Creates the dedicated WSL2 distro "NodePulse" from Ubuntu 24.04,
 # copies the setup files and runs wsl2-setup.sh inside it.
@@ -14,6 +14,12 @@
 #============================================================
 
 $ErrorActionPreference = "Stop"
+
+# Force UTF-8 console output so unicode box-drawing chars render correctly
+# on Windows PowerShell 5.1 (default console code page is usually 850/1252).
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try { chcp 65001 > $null } catch {}
 
 $DISTRO_NAME  = "NodePulse"
 $INSTALL_DIR  = "$env:USERPROFILE\WSL\NodePulse"
