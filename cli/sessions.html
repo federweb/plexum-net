@@ -275,6 +275,71 @@
         }
         #new-name.err { border-color: var(--danger); }
 
+        /* ── Desktop launcher ── */
+        #desktop-launcher {
+            display: none;
+            width: 100%;
+            max-width: 720px;
+            margin-top: 32px;
+            padding: 22px 26px;
+            background: linear-gradient(135deg, #0f1419 0%, #131820 100%);
+            border: 1px solid var(--accent2);
+            border-radius: 14px;
+            text-decoration: none;
+            color: var(--text);
+            align-items: center;
+            gap: 22px;
+            box-shadow: 0 0 24px rgba(0,201,167,0.08);
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        }
+        #desktop-launcher.show { display: flex; }
+        #desktop-launcher:hover {
+            border-color: var(--accent);
+            box-shadow: 0 0 32px rgba(0,255,136,0.18);
+            transform: translateY(-1px);
+        }
+
+        .dl-icon {
+            font-size: 56px;
+            line-height: 1;
+            flex-shrink: 0;
+            filter: drop-shadow(0 0 8px rgba(0,255,136,0.25));
+        }
+
+        .dl-info { flex: 1; min-width: 0; }
+
+        .dl-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.3px;
+        }
+
+        .dl-specs {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .dl-cta {
+            padding: 10px 20px;
+            background: var(--accent);
+            color: #0a0a0a;
+            border-radius: 8px;
+            font: bold 13px/1 "Fira Code", monospace;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        #desktop-launcher:hover .dl-cta { background: var(--accent2); }
+
+        @media (max-width: 560px) {
+            #desktop-launcher { flex-direction: column; text-align: center; gap: 14px; padding: 20px; }
+            .dl-icon { font-size: 48px; }
+            .dl-cta { width: 100%; padding: 12px; }
+        }
+
         /* ── Menu panel ── */
         @media(max-width:768px){#menu-panel{display:none!important}}
         #menu-panel{position:fixed;right:0;top:50%;transform:translateY(-50%);width:40px;display:flex;flex-direction:column;gap:2px;z-index:9999;background:#151820;border:1px solid #1e2330;border-right:none;border-radius:8px 0 0 8px;padding:4px 0;box-shadow:-2px 0 12px rgba(0,0,0,.4)}
@@ -319,6 +384,15 @@
 <div class="sessions-list" id="sessions-list">
     <div class="empty-state"><span class="spin"></span></div>
 </div>
+
+<a id="desktop-launcher" href="/desktop/" target="_blank" rel="noopener">
+    <span class="dl-icon">&#x1F427;</span>
+    <div class="dl-info">
+        <div class="dl-title">Open Ubuntu Remote Desktop</div>
+        <div class="dl-specs">Openbox &middot; noVNC &middot; Xtigervnc</div>
+    </div>
+    <span class="dl-cta">launch &rarr;</span>
+</a>
 
 <div id="toast"></div>
 
@@ -534,9 +608,25 @@
     window.deleteSession  = deleteSession;
     window.loadSessions   = loadSessions;
 
+    // ── Desktop launcher detection ──────────────────────────────────────────
+    // HEAD /desktop/vnc.html through nginx → websockify:
+    //   200 → installed AND running     → show button
+    //   404 → nginx location missing    → not installed, hide
+    //   502/504 → installed but stopped → hide (avoid broken link)
+    function checkDesktop() {
+        fetch('/desktop/vnc.html', { method: 'HEAD', cache: 'no-store' })
+            .then(function (r) {
+                if (r.ok) {
+                    document.getElementById('desktop-launcher').classList.add('show');
+                }
+            })
+            .catch(function () { /* unreachable — leave hidden */ });
+    }
+
     // ── Init ────────────────────────────────────────────────────────────────
 
     loadSessions();
+    checkDesktop();
     // Auto-refresh every 15 seconds
     setInterval(loadSessions, 15000);
 
