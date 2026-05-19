@@ -609,14 +609,19 @@
     window.loadSessions   = loadSessions;
 
     // ── Desktop launcher detection ──────────────────────────────────────────
-    // HEAD /desktop/vnc.html through nginx → websockify:
-    //   200 → installed AND running     → show button
-    //   404 → nginx location missing    → not installed, hide
-    //   502/504 → installed but stopped → hide (avoid broken link)
+    // GET /desktop/vnc.html through nginx → websockify, then sniff body:
+    //   noVNC marker in body → installed AND running → show button
+    //   missing marker (200) → nginx try_files fell back to root /index.php
+    //                          (location /desktop/ not loaded yet) → hide
+    //   non-2xx              → 404/502/etc → hide
+    // HEAD + r.ok was a false positive: try_files $uri $uri/ /index.php
+    // rewrites /desktop/vnc.html to the root dashboard whenever the
+    // /desktop/ proxy block is missing — that's still a 200.
     function checkDesktop() {
-        fetch('/desktop/vnc.html', { method: 'HEAD', cache: 'no-store' })
-            .then(function (r) {
-                if (r.ok) {
+        fetch('/desktop/vnc.html', { method: 'GET', cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.text() : ''; })
+            .then(function (body) {
+                if (body && body.indexOf('noVNC') !== -1) {
                     document.getElementById('desktop-launcher').classList.add('show');
                 }
             })
