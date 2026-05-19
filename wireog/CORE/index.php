@@ -997,6 +997,9 @@
             openRoomModal();
         });
     </script>
+    <?php if (file_exists(__DIR__ . '/../../../nodepulse-sw.js')): ?>
+    <script src="../../../nodepulse-sw.js"></script>
+    <?php endif; ?>
 </body>
 
 </html>
