@@ -1,6 +1,6 @@
 /**
  * NodePulse — SW Registration + Connectivity Monitor
- * Include in ogni pagina: <script src="/nodepulse-sw.js"></script>
+ * Includes on every page: <script src="/nodepulse-sw.js"></script>
  *
  * 1. Registers the Service Worker with scope: /
  * 2. Periodically pings /beacon/?ping to detect tunnel death
