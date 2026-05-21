@@ -238,6 +238,18 @@ if ( isset( \$_SERVER['SERVER_PORT'] ) && ! empty( \$_SERVER['HTTPS'] ) && \$_SE
     \$_SERVER['SERVER_PORT'] = 443;
 }
 
+// Dynamic site URL — survives Cloudflare tunnel URL changes. The trycloudflare
+// hostname rotates on every restart, so we derive WP_HOME/WP_SITEURL from the
+// current request instead of trusting whatever was stored in the DB during the
+// install wizard. basename(__DIR__) gives the install folder (e.g. "${SITE}").
+if ( isset( \$_SERVER['HTTP_HOST'] ) ) {
+    \$_wp_proto = ( ! empty( \$_SERVER['HTTPS'] ) && \$_SERVER['HTTPS'] === 'on' ) ? 'https' : 'http';
+    \$_wp_base  = \$_wp_proto . '://' . \$_SERVER['HTTP_HOST'] . '/' . basename( __DIR__ );
+    define( 'WP_HOME',    \$_wp_base );
+    define( 'WP_SITEURL', \$_wp_base );
+    unset( \$_wp_proto, \$_wp_base );
+}
+
 if ( ! defined( 'ABSPATH' ) ) {
     define( 'ABSPATH', __DIR__ . '/' );
 }
@@ -523,7 +535,8 @@ rm -rf "${SITE_DIR}"
 | `Error establishing a database connection` | Missing or incorrect `db.php` | Check that `wp-content/db.php` is the SQLite plugin drop-in (re-run section 2.2) |
 | `Your PHP installation appears to be missing the MySQL extension which is required by WordPress.` | `wp-content/db.php` not loaded (drop-in missing or named wrong) | Re-copy `db.copy` → `db.php` (section 2.2) and confirm the `sqlite-database-integration` plugin folder exists |
 | Permalinks return 404 (URLs like `/2026/05/20/title/`) | Missing `try_files` rule in nginx | Add the `location /${SITE}` block (section 4) and reload nginx |
-| Redirect loop after login | `WP_SITEURL`/`WP_HOME` hard-coded in `wp-config.php` | Remove those `define()` lines and let auto-detect handle it |
+| Redirect loop after login | `WP_SITEURL`/`WP_HOME` hard-coded with a stale URL | The dynamic block in `wp-config.php` (section 3.2) derives them from `HTTP_HOST` on every request — make sure that block is present and not replaced by a static URL |
+| Every click bounces to `/beacon/` (recovery browser) on a fresh tunnel | DB still holds the previous `trycloudflare.com` host in `siteurl`/`home`, WordPress 302s to the dead URL, the ping fails, beacon kicks in | Add the dynamic `WP_HOME`/`WP_SITEURL` block from section 3.2; optionally clean the DB: `php -r '$db=new PDO("sqlite:wp-content/database/wordpress.sqlite"); $db->exec("UPDATE wp_options SET option_value=\"/${SITE}\" WHERE option_name IN (\"siteurl\",\"home\")");'` |
 | Absolute links generated with `:8080` (CSS/JS missing, weird HTTPS redirects) | Wizard run via `https://...trycloudflare.com:8080/...`: WordPress stored `siteurl`/`home` with the port | Fix from the SQLite CLI: `sqlite3 wp-content/database/wordpress.sqlite "UPDATE wp_options SET option_value = REPLACE(option_value, ':8080', '') WHERE option_name IN ('siteurl','home');"`. The port-stripping block in `wp-config.php` (section 3.2) prevents it from happening again |
 | Browser keeps going to `:8080` even after the DB fix | Browser cache / history / bookmarks | Test in private/incognito. Clear browsing data for the domain |
 | "Allowed memory size exhausted" | PHP `memory_limit` too low | In `wp-config.php`: `define('WP_MEMORY_LIMIT', '256M');` |

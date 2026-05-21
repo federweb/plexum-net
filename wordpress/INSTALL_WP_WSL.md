@@ -206,6 +206,18 @@ if ( isset( \$_SERVER['SERVER_PORT'] ) && ! empty( \$_SERVER['HTTPS'] ) && \$_SE
     \$_SERVER['SERVER_PORT'] = 443;
 }
 
+// Dynamic site URL — survives Cloudflare tunnel URL changes. The trycloudflare
+// hostname rotates on every restart, so we derive WP_HOME/WP_SITEURL from the
+// current request instead of trusting whatever was stored in the DB during the
+// install wizard. basename(__DIR__) gives the install folder (e.g. "${SITE}").
+if ( isset( \$_SERVER['HTTP_HOST'] ) ) {
+    \$_wp_proto = ( ! empty( \$_SERVER['HTTPS'] ) && \$_SERVER['HTTPS'] === 'on' ) ? 'https' : 'http';
+    \$_wp_base  = \$_wp_proto . '://' . \$_SERVER['HTTP_HOST'] . '/' . basename( __DIR__ );
+    define( 'WP_HOME',    \$_wp_base );
+    define( 'WP_SITEURL', \$_wp_base );
+    unset( \$_wp_proto, \$_wp_base );
+}
+
 if ( ! defined( 'ABSPATH' ) ) {
     define( 'ABSPATH', __DIR__ . '/' );
 }
@@ -420,7 +432,8 @@ rm -f "${CRED_FILE}"
 | Permalinks return 404 (URLs like `/2026/05/20/title/`) | Missing `try_files` rule in nginx | Add the `location /${SITE}` block (section 5) and reload nginx |
 | CSS/JS not loading (unstyled page) | `siteurl` is `http://` but the site is reached over `https://` | Handled by the HTTPS auto-detection block in `wp-config.php` — verify it's still there |
 | `service mariadb start` prints `invoke-rc.d: could not determine current runlevel` | WSL2 without systemd | Harmless warning. MariaDB starts anyway, verify with `ss -tln \| grep 3306` |
-| Redirect loop after login | `WP_SITEURL` / `WP_HOME` defined in `wp-config.php` with the wrong URL | Remove those `define()` lines and let WordPress auto-detect from `HTTP_HOST` |
+| Redirect loop after login | `WP_SITEURL` / `WP_HOME` hard-coded with a stale URL | The dynamic block in `wp-config.php` (section 4.2) derives them from `HTTP_HOST` on every request — make sure that block is present and not replaced by a static URL |
+| Every click bounces to `/beacon/` (recovery browser) on a fresh tunnel | DB still holds the previous `trycloudflare.com` host in `siteurl`/`home`, WordPress 302s to the dead URL, the ping fails, beacon kicks in | Add the dynamic `WP_HOME`/`WP_SITEURL` block from section 4.2; optionally clean the DB: `mariadb -u root ${DB_NAME} -e "UPDATE wp_options SET option_value='/${SITE}' WHERE option_name IN ('siteurl','home');"` |
 | Absolute links generated with `:8080` (CSS/JS missing, weird HTTPS redirects) | Wizard run via `https://...trycloudflare.com:8080/...`: WordPress stored `siteurl`/`home` with the port | Fix in DB: `mariadb -u root ${DB_NAME} -e "UPDATE wp_options SET option_value = REPLACE(option_value, ':8080', '') WHERE option_name IN ('siteurl','home');"` (also replace `http://` with `https://` if needed). The port-stripping block in `wp-config.php` (section 4.2) prevents it from happening again |
 | Browser keeps going to `:8080` even after the DB fix | Browser cache / history / bookmarks | Test in private/incognito: if it works there, it's only the browser. Clear browsing data for the domain |
 | "Allowed memory size exhausted" | PHP `memory_limit` too low | In `wp-config.php`: `define('WP_MEMORY_LIMIT', '256M');` |
