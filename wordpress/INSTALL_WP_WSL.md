@@ -173,6 +173,7 @@ define( 'DB_PASSWORD', '${DB_PASS}' );
 define( 'DB_HOST',     '127.0.0.1' );
 define( 'DB_CHARSET',  'utf8mb4' );
 define( 'DB_COLLATE',  '' );
+define('FS_METHOD', 'direct');
 
 /**#@+
  * Authentication unique keys and salts.
