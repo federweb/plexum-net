@@ -1,0 +1,98 @@
+#!/bin/bash
+
+#============================================================
+# start-server (macOS)
+# Starts php-cgi + nginx + terminal daemon + PulseTerminal
+# + PeerServer + Cloudflare tunnel (with NodePulse).
+#============================================================
+
+NP_DIR="$HOME/nodepulse-bin"
+NGINX_CONF="$NP_DIR/nginx.conf"
+
+echo ""
+echo "================================"
+echo "  STARTING SERVER (nginx mode)"
+echo "================================"
+echo ""
+
+# Stop everything cleanly. Portable script dir (BSD readlink has no -f).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+STOP_SCRIPT="$SCRIPT_DIR/stop-server"
+if [ -f "$STOP_SCRIPT" ]; then
+    bash "$STOP_SCRIPT"
+elif [ -f "$HOME/bin/stop-server" ]; then
+    bash "$HOME/bin/stop-server"
+else
+    nginx -c "$NGINX_CONF" -s stop 2>/dev/null
+    pkill -f "php-cgi" 2>/dev/null
+    pkill cloudflared 2>/dev/null
+    pkill -f "terminal/daemon" 2>/dev/null
+    pkill -f "www/cli/server.py" 2>/dev/null
+fi
+rm -f ~/tmp/php.socket* 2>/dev/null
+sleep 1
+
+# PHP test file
+echo '<?php echo "PHP_OK"; ?>' > ~/www/_phptest.php
+
+# Start php-cgi (single instance, 4 children handle concurrency on :9000)
+echo "[...] Starting php-cgi on port 9000..."
+PHP_FCGI_CHILDREN=4 PHP_FCGI_MAX_REQUESTS=0 php-cgi -b 127.0.0.1:9000 > ~/tmp/php-cgi.log 2>&1 &
+sleep 1
+
+echo "[...] Starting nginx..."
+nginx -c "$NGINX_CONF"
+sleep 2
+
+PHPTEST=$(curl -s http://127.0.0.1:8080/_phptest.php 2>/dev/null)
+if [ "$PHPTEST" != "PHP_OK" ]; then
+    echo "[ERROR] PHP execution failed (HTTP: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/_phptest.php))"
+    echo "        Check: ~/www/index.php exists? ~/tmp/nginx-error.log?"
+    rm -f ~/www/_phptest.php
+    exit 1
+fi
+rm -f ~/www/_phptest.php
+
+# Terminal daemon (PHP CLI)
+echo "[...] Starting terminal daemon..."
+pkill -f "terminal/daemon" 2>/dev/null
+sleep 1
+php ~/www/terminal/daemon.php > ~/tmp/terminal-daemon.log 2>&1 &
+echo "[OK] Terminal daemon started (log: ~/tmp/terminal-daemon.log)"
+
+# PulseTerminal (Python WebSocket server behind nginx /cli/ proxy)
+if [ -f ~/www/cli/server.py ]; then
+    echo "[...] Starting PulseTerminal (WS + tmux)..."
+    pkill -f "www/cli/server.py" 2>/dev/null
+    sleep 1
+    nohup python3 ~/www/cli/server.py \
+        --host 127.0.0.1 --port 7681 \
+        --tmux \
+        > ~/tmp/pulseterm.log 2>&1 &
+    sleep 1
+    if pgrep -f "www/cli/server.py" > /dev/null; then
+        echo "[OK] PulseTerminal running on 127.0.0.1:7681 (log: ~/tmp/pulseterm.log)"
+    else
+        echo "[WARN] PulseTerminal failed to start — see ~/tmp/pulseterm.log"
+    fi
+fi
+
+echo "[OK] Server running on port 8080"
+
+# PeerServer (PeerJS signaling for meet/)
+if command -v pm2 > /dev/null 2>&1 && [ -f ~/services/peerserver/server.js ]; then
+    echo "[...] Starting PeerServer (peerjs :9001)..."
+    pm2 describe peerserver > /dev/null 2>&1 \
+        && pm2 restart peerserver > /dev/null 2>&1 \
+        || PEER_PORT=9001 pm2 start ~/services/peerserver/server.js --name peerserver > /dev/null 2>&1
+    echo "[OK] PeerServer running on :9001"
+fi
+
+# Cloudflare tunnel + NodePulse (auto-registers the node)
+echo "[...] Starting Cloudflare tunnel + NodePulse..."
+echo ""
+if [ -f "$HOME/bin/nodepulse" ]; then
+    bash "$HOME/bin/nodepulse"
+else
+    cloudflared tunnel --url http://127.0.0.1:8080
+fi
