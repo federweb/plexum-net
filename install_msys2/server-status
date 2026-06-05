@@ -1,0 +1,54 @@
+#!/usr/bin/bash
+
+#============================================================
+# server-status
+# Shows the status of all services.
+# Adapted for MSYS64 on Windows.
+#============================================================
+
+echo ""
+echo "=== SERVICE STATUS (nginx mode) ==="
+echo ""
+
+check_proc() {
+    tasklist //FI "IMAGENAME eq $1" 2>/dev/null | grep -qi "$1"
+}
+
+if check_proc "nginx.exe"; then
+    echo "Nginx:       RUNNING"
+else
+    echo "Nginx:       STOPPED"
+fi
+
+if check_proc "php-cgi.exe"; then
+    echo "PHP-CGI:     RUNNING"
+else
+    echo "PHP-CGI:     STOPPED"
+fi
+
+if check_proc "cloudflared.exe"; then
+    echo "Cloudflared: RUNNING"
+else
+    echo "Cloudflared: STOPPED"
+fi
+
+if pgrep -f "terminal/daemon" > /dev/null 2>&1; then
+    echo "Terminal:    RUNNING"
+else
+    echo "Terminal:    STOPPED"
+fi
+
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ] && kill -0 "$(cat "$MAINT_PID_FILE")" 2>/dev/null; then
+    echo "Maintenance: RUNNING"
+else
+    echo "Maintenance: STOPPED"
+fi
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 2>/dev/null)
+echo "HTTP test:   $HTTP_CODE"
+echo ""
+echo "PHP files:   ~/www/"
+echo "Binaries:    ~/nodepulse-bin/"
+echo "Gossip log:  ~/.nodepulse/gossip.log"
+echo ""
