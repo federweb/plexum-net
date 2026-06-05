@@ -264,7 +264,20 @@ CRASH_COUNT=0
 STABLE_THRESHOLD=300
 
 echo $$ > "$NP_LOOP_PID_FILE"
-trap 'kill_maintenance_daemon; rm -f "$NP_LOOP_PID_FILE" "$HOME/tmp/.np_announce.json"; echo ""; echo "[NodePulse] Stopped."' INT TERM EXIT
+
+# Single cleanup path. Guarded so INT/TERM (which exit) and the EXIT trap
+# don't double-run it. Ctrl+C must stop on the first press.
+cleanup() {
+    [ -n "$NP_CLEANED" ] && return
+    NP_CLEANED=1
+    kill_maintenance_daemon
+    pkill -x cloudflared 2>/dev/null
+    rm -f "$NP_LOOP_PID_FILE" "$HOME/tmp/.np_announce.json"
+    echo ""
+    echo "[NodePulse] Stopped."
+}
+trap 'cleanup; exit 130' INT TERM
+trap cleanup EXIT
 
 while true; do
     echo ""
@@ -279,9 +292,11 @@ while true; do
     TIMESTAMP=""
     TUNNEL_START=$(date +%s)
 
-    # Pipe cloudflared output and intercept the relevant fields.
-    # BSD grep lacks -P/\K, so captures use grep -oE / sed -nE / awk.
-    cloudflared tunnel --url http://127.0.0.1:8080 2>&1 | while IFS= read -r line; do
+    # Read cloudflared output via process substitution (NOT a pipe): this keeps
+    # the while loop in the main shell so the INT/TERM trap fires on the first
+    # Ctrl+C. With a pipe, the while subshell exits 0 on EOF and bash skips the
+    # trap, forcing a second Ctrl+C. BSD grep lacks -P/\K -> grep -oE/sed -nE/awk.
+    while IFS= read -r line; do
         echo "$line"
 
         if echo "$line" | grep -q "trycloudflare.com"; then
@@ -309,7 +324,7 @@ while true; do
                 echo "[NodePulse] Maintenance daemon active (PID $!)"
             fi
         fi
-    done
+    done < <(cloudflared tunnel --url http://127.0.0.1:8080 2>&1)
 
     if [ ! -f "$NP_LOOP_PID_FILE" ]; then
         break
