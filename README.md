@@ -16,7 +16,7 @@ The canonical, always up‑to‑date installation guide lives at:
 
 **→ https://www.plexum.net/install.php**
 
-Both supported platforms (Termux/Android and WSL2/Windows) produce identical nodes with the same identity model and protocol behavior.
+All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identical nodes with the same identity model and protocol behavior.
 
 ### Prerequisites
 
@@ -33,6 +33,12 @@ Both supported platforms (Termux/Android and WSL2/Windows) produce identical nod
   wsl --install
   ```
 - ~200 MB download
+- Active internet connection
+
+**macOS (Apple)**
+- macOS 11 (Big Sur) or later
+- Intel or Apple Silicon
+- ~200 MB free storage (`curl` and `unzip` ship with macOS; Homebrew is installed automatically if a dependency is missing)
 - Active internet connection
 
 ### Termux (Android)
@@ -93,6 +99,27 @@ Both supported platforms (Termux/Android and WSL2/Windows) produce identical nod
    ```
    wsl --unregister NodePulse
    Remove-Item -Recurse -Force "$env:USERPROFILE\WSL\NodePulse"
+   ```
+
+### macOS (Apple)
+
+1. **Install** — open the built-in **Terminal** app and run:
+   ```
+   curl -L -O https://www.plexum.net/nodepulse/core-dist/install_osx.zip && unzip -o install_osx.zip && bash ./osx-setup.sh
+   ```
+   `curl` and `unzip` ship with macOS. The installer pulls dependencies (PHP, OpenSSL, cloudflared) — installing Homebrew first if one is missing — generates the RSA‑2048 keypair, writes the node identity to `~/.nodepulse/node_identity.json`, and lays out the web server files.
+
+2. **Start the server:**
+   ```
+   bash ~/bin/start-server
+   ```
+   PHP starts on port 8080 and a cloudflared tunnel is established with a public URL.
+
+3. **First access** — open the tunnel URL in a browser. On first access you'll set the password that protects Terminal, Cloud, File Manager and the other gated apps. Local access is available at `http://localhost:8080`.
+
+4. **Stop the server:**
+   ```
+   bash ~/bin/stop-server
    ```
 
 ### How it works
