@@ -414,11 +414,16 @@ for f in cli-auth.php cli-login.php; do
 done
 ok "PulseTerminal ready (~/www/cli/, gated via auth_gate, nginx -> /cli/)"
 
-# 12. PATH + brew shellenv in shell rc (zsh is default on macOS)
-SHELL_RC="$HOME/.zshrc"
-[ -n "$BASH_VERSION" ] && SHELL_RC="$HOME/.bash_profile"
+# 12. PATH + brew shellenv in shell rc.
+# Pick the rc of the user's LOGIN shell ($SHELL), not of the shell running
+# this script: the installer is invoked as `bash osx-setup.sh`, while the
+# macOS default login shell is zsh.
+case "${SHELL##*/}" in
+    bash) SHELL_RC="$HOME/.bash_profile" ;;
+    *)    SHELL_RC="$HOME/.zshrc" ;;
+esac
 touch "$SHELL_RC"
-if ! grep -q 'nodepulse-bin' "$SHELL_RC" 2>/dev/null; then
+if ! grep -qF '# NodePulse' "$SHELL_RC" 2>/dev/null; then
     {
         echo ""
         echo '# NodePulse'

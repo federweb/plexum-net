@@ -18,6 +18,16 @@ NP_IDENTITY="$HOME/.nodepulse"
 MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
 NP_LOOP_PID_FILE="$HOME/tmp/.np_loop_pid"
 
+# Homebrew is not on the default PATH on Apple Silicon (/opt/homebrew);
+# resolve it here so php/cloudflared are found regardless of the shell rc.
+if ! command -v brew > /dev/null 2>&1; then
+    if [ -x /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -x /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
+fi
+
 mkdir -p "$PULSE_DIR" "$HOME/tmp"
 
 # ---- Original Seed nodes (hardcoded) ----

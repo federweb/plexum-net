@@ -9,6 +9,16 @@
 NP_DIR="$HOME/nodepulse-bin"
 NGINX_CONF="$NP_DIR/nginx.conf"
 
+# Homebrew is not on the default PATH on Apple Silicon (/opt/homebrew);
+# resolve it here so the script works regardless of the caller's shell rc.
+if ! command -v brew > /dev/null 2>&1; then
+    if [ -x /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -x /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
+fi
+
 echo "[...] Stopping all services..."
 
 nginx -c "$NGINX_CONF" -s stop 2>/dev/null

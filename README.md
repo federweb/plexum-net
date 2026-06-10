@@ -16,7 +16,7 @@ The canonical, always up‑to‑date installation guide lives at:
 
 **→ https://www.plexum.net/install.php**
 
-All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identical nodes with the same identity model and protocol behavior.
+All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identical nodes with the same identity model and protocol behavior. The legacy MSYS2 port (`install_msys2/`) is deprecated and no longer supported.
 
 ### Prerequisites
 
@@ -36,9 +36,9 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
 - Active internet connection
 
 **macOS (Apple)**
-- macOS 11 (Big Sur) or later
+- macOS 13 (Ventura) or later — older releases are no longer supported by Homebrew
 - Intel or Apple Silicon
-- ~200 MB free storage (`curl` and `unzip` ship with macOS; Homebrew is installed automatically if a dependency is missing)
+- ~3 GB free storage: the installer bootstraps Homebrew (and the Xcode Command Line Tools) if missing, then pulls PHP, nginx, Python and Node.js
 - Active internet connection
 
 ### Termux (Android)
@@ -47,13 +47,13 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
    ```
    pkg install -y wget && wget https://www.plexum.net/nodepulse/core-dist/install_termux.zip && unzip install_termux.zip && bash ./termux-setup.sh
    ```
-   The installer pulls dependencies (PHP, OpenSSL, curl, cloudflared), generates the RSA‑2048 keypair, writes the node identity to `~/.nodepulse/node_identity.json`, and lays out the web server files.
+   The installer pulls dependencies (PHP, nginx/lighttpd, cloudflared, OpenSSL, Python, Node.js, tmux), generates the RSA‑2048 keypair, writes the node identity to `~/.nodepulse/node_identity.json`, and lays out the web server files.
 
 2. **Start the server:**
    ```
    bash ~/bin/start-server
    ```
-   PHP starts on port 8080 and a cloudflared tunnel is established with a public URL.
+   The web server starts on port 8080 (PHP runs behind it via FastCGI) and a cloudflared tunnel is established with a public URL.
 
 3. **First access** — open the tunnel URL in a browser. On first access you'll set the password that protects Terminal, Cloud, File Manager and the other gated apps. Local access is available at `http://localhost:8080`.
 
@@ -107,33 +107,41 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
    ```
    curl -L -O https://www.plexum.net/nodepulse/core-dist/install_osx.zip && unzip -o install_osx.zip && bash ./osx-setup.sh
    ```
-   `curl` and `unzip` ship with macOS. The installer pulls dependencies (PHP, OpenSSL, cloudflared) — installing Homebrew first if one is missing — generates the RSA‑2048 keypair, writes the node identity to `~/.nodepulse/node_identity.json`, and lays out the web server files.
+   `curl` and `unzip` ship with macOS. The installer pulls dependencies via Homebrew (PHP, nginx, cloudflared, Python, Node.js, tmux), installing Homebrew first if it's missing, then generates the RSA‑2048 keypair, writes the node identity to `~/.nodepulse/node_identity.json`, and lays out the web server files.
 
 2. **Start the server:**
    ```
    bash ~/bin/start-server
    ```
-   PHP starts on port 8080 and a cloudflared tunnel is established with a public URL.
+   nginx starts on port 8080 (PHP runs behind it via FastCGI) and a cloudflared tunnel is established with a public URL.
 
 3. **First access** — open the tunnel URL in a browser. On first access you'll set the password that protects Terminal, Cloud, File Manager and the other gated apps. Local access is available at `http://localhost:8080`.
 
-4. **Stop the server:**
+4. **Stop / status:**
    ```
    bash ~/bin/stop-server
+   bash ~/bin/server-status
    ```
+   In any new terminal the bare `start-server`, `stop-server` and `server-status` commands are also on PATH.
+
+5. **Uninstall:**
+   ```
+   pm2 delete peerserver 2>/dev/null; rm -rf ~/.nodepulse ~/www ~/nodepulse-bin ~/services/peerserver ~/.server-mode ~/bin/start-server ~/bin/stop-server ~/bin/server-status ~/bin/nodepulse
+   ```
+   Homebrew packages (php, nginx, cloudflared, python, tmux, node) stay installed — remove them with `brew uninstall` if no longer needed, and delete the `# NodePulse` block from your shell rc file.
 
 ### How it works
 
-The installer generates an RSA‑2048 keypair (the unique node identity), starts the PHP server on port 8080, opens a cloudflared public tunnel, signs announcements with the private key, and propagates the signed announcement to seed nodes via the gossip protocol for network‑wide distribution.
+The installer generates an RSA‑2048 keypair (the unique node identity), starts the web server on port 8080, opens a cloudflared public tunnel, signs announcements with the private key, and propagates the signed announcement to seed nodes via the gossip protocol for network‑wide distribution.
 
 ### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | Tunnel URL missing | Cloudflared takes 10–30 seconds — check the connection and wait. |
-| Port 8080 in use | Run `stop-server` (or `bash ~/bin/stop-server` on Termux) to free it. |
+| Port 8080 in use | Run `stop-server` (or `bash ~/bin/stop-server` on Termux/macOS) to free it. |
 | Node not visible in monitor | Network propagation takes 1–2 minutes — refresh the monitor page. |
-| Full removal | `rm -rf ~/.nodepulse ~/www ~/bin/start-server ~/bin/stop-server` |
+| Full removal | `rm -rf ~/.nodepulse ~/www ~/.server-mode ~/services/peerserver ~/bin/start-server ~/bin/stop-server ~/bin/server-status ~/bin/nodepulse` — on macOS use the Uninstall step above. |
 
 **Support:** dev@plexum.org
 
