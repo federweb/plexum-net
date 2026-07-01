@@ -411,7 +411,7 @@ ok "Termux:Boot script created (~/.termux/boot/start-peerserver.sh)"
 
 # 9. INSTALL SCRIPTS FROM REPO
 info "Installing scripts..."
-for script in start-server stop-server server-status; do
+for script in start-server stop-server server-status run-looped; do
     if [ ! -f "$SCRIPT_DIR/$script" ]; then
         fail "Missing file: $SCRIPT_DIR/$script"
     fi
@@ -425,7 +425,7 @@ fi
 cp "$SCRIPT_DIR/nodepulse.sh" "$BIN_DIR/nodepulse"
 chmod +x "$BIN_DIR/nodepulse"
 
-ok "Scripts installed: start-server, stop-server, server-status, nodepulse"
+ok "Scripts installed: start-server, stop-server, server-status, run-looped, nodepulse"
 
 
 

@@ -130,6 +130,24 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
    ```
    Homebrew packages (php, nginx, cloudflared, python, tmux, node) stay installed — remove them with `brew uninstall` if no longer needed, and delete the `# NodePulse` block from your shell rc file.
 
+### Scheduled restart (`run-looped`)
+
+`run-looped` is a watchdog that periodically restarts the whole server stack. Every *N* hours it invokes `stop-server`, waits 5 seconds, then invokes `start-server` again — keeping the node fresh over long uptimes.
+
+**Usage:**
+```
+run-looped -<hours>
+```
+
+- `<hours>` — interval (in hours) between automatic restarts. The parameter is **mandatory**: run without it and the command prints a usage notice and exits.
+
+**Example** — restart the server every 12 hours:
+```
+run-looped -12
+```
+
+The command is installed alongside `start-server`/`stop-server` (on PATH for WSL2; under `~/bin/` on Termux and macOS, e.g. `bash ~/bin/run-looped -12`). It runs a long-lived loop, so launch it inside `tmux` (or with `nohup`) to keep it alive after you close the session. Press `Ctrl-C` to stop the loop cleanly (it runs `stop-server` on exit). Note: each restart of the cloudflared quick tunnel produces a new public URL.
+
 ### How it works
 
 The installer generates an RSA‑2048 keypair (the unique node identity), starts the web server on port 8080, opens a cloudflared public tunnel, signs announcements with the private key, and propagates the signed announcement to seed nodes via the gossip protocol for network‑wide distribution.

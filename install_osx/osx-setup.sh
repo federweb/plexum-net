@@ -368,7 +368,7 @@ info "To auto-start PeerServer at login, run the command printed by: pm2 startup
 
 # 10. INSTALL SCRIPTS FROM REPO
 info "Installing scripts..."
-for script in start-server stop-server server-status; do
+for script in start-server stop-server server-status run-looped; do
     if [ ! -f "$SCRIPT_DIR/$script" ]; then
         fail "Missing file: $SCRIPT_DIR/$script"
     fi
@@ -381,7 +381,7 @@ if [ ! -f "$SCRIPT_DIR/nodepulse.sh" ]; then
 fi
 cp "$SCRIPT_DIR/nodepulse.sh" "$BIN_DIR/nodepulse"
 chmod +x "$BIN_DIR/nodepulse"
-ok "Scripts installed: start-server, stop-server, server-status, nodepulse"
+ok "Scripts installed: start-server, stop-server, server-status, run-looped, nodepulse"
 
 # 11. INSTALL TERMINAL
 info "Installing Terminal..."

@@ -1,0 +1,82 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+#============================================================
+# run-looped (Termux)
+# Watchdog that periodically restarts the whole server stack.
+# Every <hours> hours it invokes stop-server, waits 5 seconds,
+# then invokes start-server again.
+#
+# Usage:
+#   run-looped -<hours>
+# Example:
+#   run-looped -12    # restart the server every 12 hours
+#============================================================
+
+usage() {
+    echo ""
+    echo "[ERROR] Missing or invalid time parameter."
+    echo ""
+    echo "Usage:  run-looped -<hours>"
+    echo "        <hours>  interval (in hours) between automatic restarts."
+    echo ""
+    echo "Example:"
+    echo "        run-looped -12    restart the server every 12 hours"
+    echo ""
+    exit 1
+}
+
+# The time parameter is mandatory.
+[ -z "$1" ] && usage
+
+# Accept either "-12" or "12".
+HOURS="${1#-}"
+
+# Must be a positive integer >= 1.
+case "$HOURS" in
+    ''|*[!0-9]*) usage ;;
+esac
+[ "$HOURS" -lt 1 ] && usage
+
+INTERVAL=$(( HOURS * 3600 ))
+
+# Resolve start-server / stop-server next to this script (or in ~/bin).
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+START_SCRIPT="$SCRIPT_DIR/start-server"
+STOP_SCRIPT="$SCRIPT_DIR/stop-server"
+[ -f "$START_SCRIPT" ] || START_SCRIPT="$HOME/bin/start-server"
+[ -f "$STOP_SCRIPT" ]  || STOP_SCRIPT="$HOME/bin/stop-server"
+
+if [ ! -f "$START_SCRIPT" ] || [ ! -f "$STOP_SCRIPT" ]; then
+    echo "[ERROR] Could not find start-server / stop-server."
+    exit 1
+fi
+
+mkdir -p "$HOME/tmp"
+LOG="$HOME/tmp/run-looped.log"
+
+# Stop the server cleanly if the loop itself is interrupted.
+cleanup() {
+    echo ""
+    echo "[run-looped] Interrupted — stopping server..."
+    bash "$STOP_SCRIPT"
+    exit 0
+}
+trap cleanup INT TERM
+
+echo "================================"
+echo "  RUN-LOOPED (every $HOURS h)"
+echo "================================"
+
+# start-server ends with a blocking foreground tunnel, so run it in the
+# background and let this loop own the timing.
+while true; do
+    echo "[run-looped] $(date '+%Y-%m-%dT%H:%M:%SZ') Starting server..."
+    nohup bash "$START_SCRIPT" >> "$LOG" 2>&1 &
+
+    echo "[run-looped] Server started (log: $LOG). Next restart in $HOURS h."
+    sleep "$INTERVAL"
+
+    echo "[run-looped] $(date '+%Y-%m-%dT%H:%M:%SZ') Stopping server..."
+    bash "$STOP_SCRIPT"
+    sleep 5
+done

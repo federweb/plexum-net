@@ -333,7 +333,7 @@ cd "$HOME"
 
 # 9. INSTALL SCRIPTS
 info "Installing scripts..."
-for script in start-server stop-server server-status; do
+for script in start-server stop-server server-status run-looped; do
     [ ! -f "$SCRIPT_DIR/$script" ] && fail "Missing file: $SCRIPT_DIR/$script"
     cp "$SCRIPT_DIR/$script" "$BIN_DIR/$script"
     chmod +x "$BIN_DIR/$script"
@@ -341,7 +341,7 @@ done
 [ ! -f "$SCRIPT_DIR/nodepulse.sh" ] && fail "Missing file: $SCRIPT_DIR/nodepulse.sh"
 cp "$SCRIPT_DIR/nodepulse.sh" "$BIN_DIR/nodepulse"
 chmod +x "$BIN_DIR/nodepulse"
-ok "Scripts installed: start-server, stop-server, server-status, nodepulse"
+ok "Scripts installed: start-server, stop-server, server-status, run-looped, nodepulse"
 
 # 10. PULSETERMINAL (cli/)
 info "Installing PulseTerminal (CLI over WS)..."
