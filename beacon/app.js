@@ -79,6 +79,7 @@
         recoveryInProgress: false,  // prevents overlapping recovery cycles
         recoveryCycle: 0,           // current cycle number (for backoff)
         returnPath: '',             // path where user was when tunnel died
+        returnAttempted: false,     // one-shot guard: auto-return fired once
     };
 
     // =====================================================================
@@ -160,21 +161,40 @@
         } else if (online && state.recoveryActive) {
             stopRecoveryMode();
             autoReturnIfNeeded();
+        } else if (online && !state.recoveryActive) {
+            // Loaded while ONLINE without a recovery in progress: either a manual
+            // visit to /beacon/ or the SW fallback served while the node is actually
+            // reachable. The beacon is a fallback surface, never a place to linger
+            // when the node is up — leave for the return path (or root).
+            autoReturnIfNeeded();
         }
     }
 
     function autoReturnIfNeeded() {
+        // One-shot: once a redirect is scheduled, don't fire again on the next ping.
+        if (state.returnAttempted) return;
+
         var returnPath = state.returnPath || lsGet(CONFIG.LS_KEY_RETURN_PATH) || '';
-        if (!returnPath || returnPath === '/' || returnPath === '/beacon/') return;
+
+        // Pick a destination. A specific return path (that isn't the beacon itself)
+        // wins; otherwise fall back to the node root so we never stay on /beacon/.
+        var target;
+        if (returnPath && returnPath !== '/beacon/' && returnPath.indexOf('/beacon') !== 0) {
+            target = returnPath;
+        } else {
+            target = '/';
+        }
+
+        state.returnAttempted = true;
 
         // Re-show recovery panel for the redirect message
         if (DOM.recoveryPanel) DOM.recoveryPanel.classList.add('active');
         addRecoveryLog('Connection restored!', 'found');
-        addRecoveryLog('Returning to ' + returnPath + ' in 3s...', 'redirect');
+        addRecoveryLog('Returning to ' + target + ' in 5s...', 'redirect');
 
         setTimeout(function () {
             try { localStorage.removeItem(CONFIG.LS_KEY_RETURN_PATH); } catch(e) {}
-            window.location.href = returnPath;
+            window.location.href = target;
         }, CONFIG.REDIRECT_DELAY);
     }
 
