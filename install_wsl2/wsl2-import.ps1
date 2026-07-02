@@ -74,7 +74,7 @@ if ($existing) {
 
 # --- Check setup files -----------------------------------
 
-$requiredFiles = @("wsl2-setup.sh","nodepulse.sh","start-server","stop-server","server-status")
+$requiredFiles = @("wsl2-setup.sh","nodepulse.sh","start-server","stop-server","server-status","run-looped")
 foreach ($f in $requiredFiles) {
     if (-not (Test-Path (Join-Path $SETUP_DIR $f))) {
         Write-Err "Missing file: $f"
