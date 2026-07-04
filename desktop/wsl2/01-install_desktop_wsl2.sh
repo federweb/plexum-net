@@ -221,10 +221,14 @@ with open(conf) as f:
 # $real_scheme is set at server level (see EXACT_BLOCK); $host strips the port.
 EXACT_BLOCK = '''\
         # Cloudflare Tunnel speaks plain HTTP to nginx; read real scheme from X-Forwarded-Proto.
-        # $host never includes the port; $http_host may include :8080 on direct backend access.
+        # Tunnel requests always carry X-Forwarded-Proto (added by cloudflared) -> $host
+        # (public hostname, never has a port). Direct access (localhost:8080) doesn't ->
+        # $http_host, so redirects keep the :8080 port.
         set $real_scheme $scheme;
+        set $redirect_host $http_host;
         if ($http_x_forwarded_proto = "https") {
             set $real_scheme "https";
+            set $redirect_host $host;
         }
 
         # NodePulse Desktop — Openbox via noVNC (WebSocket proxy)
@@ -237,7 +241,7 @@ EXACT_BLOCK = '''\
         location = /desktop/ {
             auth_request /cli-auth.php;
             error_page 401 = @desktop_login;
-            return 302 $real_scheme://$host/desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
+            return 302 $real_scheme://$redirect_host/desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
         }
 
         # Prefix match: static noVNC files + WebSocket upgrade to websockify
@@ -257,7 +261,7 @@ EXACT_BLOCK = '''\
         }
 
         location @desktop_login {
-            return 302 $real_scheme://$host/cli-login.php;
+            return 302 $real_scheme://$redirect_host/cli-login.php;
         }
 
 '''
@@ -266,7 +270,7 @@ PREFIX_ONLY = '''\
         location = /desktop/ {
             auth_request /cli-auth.php;
             error_page 401 = @desktop_login;
-            return 302 $real_scheme://$host/desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
+            return 302 $real_scheme://$redirect_host/desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
         }
 
 '''
@@ -317,10 +321,13 @@ with open(conf) as f:
 SCHEME_BLOCK = (
     '\n'
     '    # Cloudflare Tunnel speaks plain HTTP to nginx; read real scheme from X-Forwarded-Proto.\n'
-    '    # $host never includes the port; $http_host may include :8080 on direct backend access.\n'
+    '    # Tunnel requests carry X-Forwarded-Proto -> $host (public name, no port);\n'
+    '    # direct access (localhost:8080) -> $http_host, so redirects keep the port.\n'
     '    set $real_scheme $scheme;\n'
+    '    set $redirect_host $http_host;\n'
     '    if ($http_x_forwarded_proto = "https") {\n'
     '        set $real_scheme "https";\n'
+    '        set $redirect_host $host;\n'
     '    }\n'
 )
 
@@ -335,13 +342,13 @@ if 'real_scheme' not in content:
     print("ERROR: could not inject real_scheme block", file=sys.stderr)
     sys.exit(1)
 
-# Fix $scheme://$http_host -> $real_scheme://$host in all return directives
-content = re.sub(r'\$scheme://\$http_host', r'$real_scheme://$host', content)
+# Fix $scheme://$http_host -> $real_scheme://$redirect_host in all return directives
+content = re.sub(r'\$scheme://\$http_host', r'$real_scheme://$redirect_host', content)
 
 # Fix root-relative /desktop/ redirect -> absolute with real scheme
 content = re.sub(
     r'return 302 /desktop/vnc\.html\?',
-    r'return 302 $real_scheme://$host/desktop/vnc.html?',
+    r'return 302 $real_scheme://$redirect_host/desktop/vnc.html?',
     content
 )
 
@@ -454,16 +461,22 @@ cat > "$HOME/www/desktop/index.php" << 'PHPEOF'
 <?php
 // NodePulse Desktop — redirect to noVNC.
 // Uses an absolute Location header (PHP only rewrites relative URLs to http://host:8080/...).
-// X-Forwarded-Proto from Cloudflare Tunnel gives the real scheme (https).
-// HTTP_HOST is the public hostname without port; strtok strips it if present.
-$proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? 'https';
-$host  = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
-$host  = strtok($host, ':'); // strip :8080 (nginx backend port)
-$qs    = 'path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1';
+// Tunnel requests carry X-Forwarded-Proto (added by cloudflared):
+//   tunnel -> https, strip any backend port from the host
+//   direct -> http,  KEEP the port (localhost:8080)
+$fwd  = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null;
+$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+if ($fwd !== null) {
+    $proto = $fwd;
+    $host  = strtok($host, ':'); // strip :8080 (nginx backend port)
+} else {
+    $proto = 'http';
+}
+$qs = 'path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1';
 header("Location: {$proto}://{$host}/desktop/vnc.html?{$qs}", true, 302);
 exit;
 PHPEOF
-ok "index.php written (absolute PHP redirect, preserves https and strips :8080)"
+ok "index.php written (localhost-aware redirect: https via tunnel, http://host:8080 direct)"
 
 # ─────────────────────────────────────────────────────────────
 # Final verification
@@ -495,6 +508,7 @@ check "start-desktop (+x)"       test -x "$HOME/bin/start-desktop"
 check "stop-desktop (+x)"        test -x "$HOME/bin/stop-desktop"
 check "nginx exact-match"        grep -q 'location = /desktop/' "$NGINX_CONF"
 check "nginx prefix-match"       grep -q 'location /desktop/' "$NGINX_CONF"
+check "nginx redirect_host"      grep -q 'redirect_host' "$NGINX_CONF"
 check "nginx config valid"       nginx -t
 check "start-server integrated"  grep -q 'start-desktop' "$HOME/bin/start-server"
 check "stop-server integrated"   grep -q 'stop-desktop' "$HOME/bin/stop-server"
