@@ -459,7 +459,7 @@
             }
 
             addRecoveryLog('Node alive! Ping OK', 'found');
-            addRecoveryLog('Redirecting in 3 seconds...', 'redirect');
+            addRecoveryLog('Redirecting in 5 seconds...', 'redirect');
 
             // Stop all polling
             if (state.recoveryTimer) {
