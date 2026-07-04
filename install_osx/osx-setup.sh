@@ -151,6 +151,11 @@ http {
     server {
         listen 8080;
         server_name localhost;
+        # Behind cloudflared: emit relative Location headers so the internal
+        # port never leaks into redirects (e.g. /beacon -> :8080/beacon/).
+        # Local access via 127.0.0.1:8080 keeps working: the browser resolves
+        # the relative path against its own origin, port included.
+        absolute_redirect off;
         root $WWW_DIR;
         index index.php index.html;
 
