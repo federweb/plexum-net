@@ -20,7 +20,8 @@
 
     // ── Connectivity Monitor ────────────────────────────────────────
     var PING_URL = '/beacon/?ping&_t=';
-    var PING_INTERVAL = 5000;    // 5 seconds
+    // Overridable per-page: set window.NODEPULSE_PING_INTERVAL (ms) before including this script
+    var PING_INTERVAL = window.NODEPULSE_PING_INTERVAL || 5000;
     var FAIL_THRESHOLD = 2;      // redirect after 2 consecutive failures
     var PING_TIMEOUT = 5000;     // 5s timeout per ping
     var LS_KEY = 'nodepulse_return_path';

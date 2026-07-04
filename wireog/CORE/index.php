@@ -998,6 +998,7 @@
         });
     </script>
     <?php if (file_exists(__DIR__ . '/../../../nodepulse-sw.js')): ?>
+    <script>window.NODEPULSE_PING_INTERVAL = 45000;</script>
     <script src="../../../nodepulse-sw.js"></script>
     <?php endif; ?>
 </body>
