@@ -2,7 +2,7 @@
 #!/usr/bin/env bash
 
 # =============================
-# **** ATTENTION **** Before running this file, it is necessary to run the environment setup file first: install_desktop_termux.sh
+# **** ATTENTION **** Before running this file, it is necessary to run the environment setup file first: 01-install_desktop_termux.sh
 # =============================
 
 

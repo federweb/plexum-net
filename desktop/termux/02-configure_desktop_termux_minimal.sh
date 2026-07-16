@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =============================
-# **** ATTENTION **** Before running this file, it is necessary to run the environment setup file first: install_desktop_termux.sh
+# **** ATTENTION **** Before running this file, it is necessary to run the environment setup file first: 01-install_desktop_termux.sh
 # =============================
 
 set -e
@@ -131,7 +131,7 @@ fi
 
 # --- xstartup (VNC session entry point) --------------------------------------
 # Rewrite ~/.vnc/xstartup in minimal form. The version shipped by
-# install_desktop_termux.sh launches `tint2 &` and `xterm &` BEFORE
+# 01-install_desktop_termux.sh launches `tint2 &` and `xterm &` BEFORE
 # `exec openbox-session`, so openbox's own autostart ends up starting a SECOND
 # tint2. The two tint2 instances fight over the systray/panel area and
 # produce a flood of `BadDrawable` X errors; pcmanfm --desktop survives the

@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
-# NodePulse Desktop — install_desktop_osx.sh
-# macOS adaptation of install_desktop_wsl2.sh.
+# NodePulse Desktop — 01-install_desktop_osx.sh
+# macOS adaptation of 01-install_desktop_wsl2.sh.
 #
 # IMPORTANT DESIGN DIFFERENCE vs WSL2/Termux:
 # Openbox is a Linux X11 window manager — it does not exist on

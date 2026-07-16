@@ -569,7 +569,7 @@ if [ "$ERRORS" -eq 0 ]; then
     echo "Then open:  https://<tunnel>.trycloudflare.com/desktop/"
     echo "Logs:       ~/tmp/{xvnc,xstartup,websockify}.log"
     echo "***NOTICE*** TO APPLY CHANGES RESTART THE SERVICE WITH stop_server AND start_server FROM THE LOCAL DEVICE"
-    echo "To set up a basic desktop configuration, execute configure_desktop_termux_minimal.sh file."   
+    echo "To set up a basic desktop configuration, execute 02-configure_desktop_termux_minimal.sh file."   
 
 else
     echo -e "${RED}${BOLD}$ERRORS check(s) failed — review output above.${NC}"

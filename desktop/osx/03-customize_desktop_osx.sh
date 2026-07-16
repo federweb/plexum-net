@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================
-# NodePulse Desktop — customize_desktop_osx.sh
-# macOS counterpart of customize_desktop_wsl2.sh.
+# NodePulse Desktop — 03-customize_desktop_osx.sh
+# macOS counterpart of 03-customize_desktop_wsl2.sh.
 # Installs extra apps + applies user customizations.
 #
 # Run order:

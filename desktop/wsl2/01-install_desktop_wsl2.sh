@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# NodePulse Desktop — install_desktop_wsl2.sh
+# NodePulse Desktop — 01-install_desktop_wsl2.sh
 # WSL2 adaptation of install_desktop.sh (Termux original).
 # Installs Openbox remote desktop via Xtigervnc + noVNC.
 # Safe to re-run: every step checks before acting.
@@ -522,7 +522,7 @@ if [ "$ERRORS" -eq 0 ]; then
     echo "Then open:  https://<tunnel>.trycloudflare.com/desktop/"
     echo "Logs:       ~/tmp/{xvnc,xstartup,websockify}.log"
     echo "***NOTICE*** TO APPLY CHANGES RESTART THE SERVICE WITH stop-server AND start-server"
-    echo "To set up a basic desktop configuration, execute the configure_desktop_wsl2.sh file."
+    echo "To set up a basic desktop configuration, execute the 02-configure_desktop_wsl2.sh file."
 else
     echo -e "${RED}${BOLD}$ERRORS check(s) failed — review output above.${NC}"
     exit 1

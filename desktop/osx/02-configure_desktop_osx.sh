@@ -4,8 +4,8 @@
 # **** ATTENTION **** Before running this file, it is necessary to run the environment setup file first: 01-install_desktop_osx.sh
 # =============================
 
-# configure_desktop_osx.sh
-# macOS counterpart of configure_desktop_wsl2.sh.
+# 02-configure_desktop_osx.sh
+# macOS counterpart of 02-configure_desktop_wsl2.sh.
 #
 # On WSL2 this step installs the minimal desktop (thunar/xfdesktop/dbus)
 # because the VM has no GUI at all. macOS already ships a full desktop

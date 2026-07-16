@@ -7,7 +7,62 @@
 <body>
 <h1 id="nodepulse-desktop-openbox-remote-via-cloudflared">NodePulse
 Desktop — Openbox Remote via cloudflared</h1>
-<h3 style="color:red;" id="quick-install">To install the entire infrastructure, just run <code>install_desktop_wsl2.sh</code> or <code>install_desktop_termux.sh</code> from a NodePulse shell terminal.</h3>
+<h3 style="color:red;" id="quick-install">To install the entire infrastructure, run the numbered scripts for
+your platform (in order) from a NodePulse shell terminal — see
+<a href="#install-scripts">Install scripts</a> below.</h3>
+
+<h2 id="termux-android-prerequisite">⚠ Termux prerequisite (Android)</h2>
+<p><strong>Before installing on Termux</strong>, Android's background
+process limits must be relaxed, or the system will kill Xvnc /
+websockify shortly after they start. At the very least:</p>
+<ol type="1">
+<li>Enable Developer Options if you haven't already:
+<strong>Settings → About phone → tap "Build number" 7 times</strong>.</li>
+<li>Open <strong>Settings → Developer options</strong>.</li>
+<li>Look for an entry like <strong>"Disable child process
+restrictions"</strong> and enable it (present on MIUI/HyperOS and some
+One UI builds; often absent on stock Android).</li>
+</ol>
+
+<h2 id="install-scripts">Install scripts</h2>
+<p>The scripts live in per-platform folders. Run them in numbered
+order; each one checks its prerequisites and is safe to re-run.</p>
+<ul>
+<li><strong><code>termux/</code></strong> (Android)
+<ul>
+<li><code>01-install_desktop_termux.sh</code> — base stack: Xvnc +
+openbox + websockify + noVNC + nginx wiring.</li>
+<li><code>02-configure_desktop_termux_minimal.sh</code> — minimal
+desktop configuration.</li>
+<li><code>configure_desktop_termux_root.sh</code> — alternative
+configuration, <strong>rooted devices only</strong> (requires
+kernel-level permissions; on non-rooted devices Android terminates the
+task).</li>
+</ul></li>
+<li><strong><code>wsl2/</code></strong> (Windows)
+<ul>
+<li><code>01-install_desktop_wsl2.sh</code> — base stack (VNC + openbox
++ noVNC).</li>
+<li><code>02-configure_desktop_wsl2.sh</code> — minimal desktop
+(thunar/xfdesktop).</li>
+<li><code>03-customize_desktop_wsl2.sh</code> — extra apps + full
+personalization (taskbar, launchers, Chrome).</li>
+</ul></li>
+<li><strong><code>osx/</code></strong> (macOS)
+<ul>
+<li><code>01-install_desktop_osx.sh</code> — exposes the
+<strong>native</strong> macOS desktop via built-in Screen Sharing
+(:5900) + websockify + noVNC (no openbox on macOS).</li>
+<li><code>02-configure_desktop_osx.sh</code> — native desktop prep for
+unattended remote access (no sleep, Finder/Dock defaults).</li>
+<li><code>03-customize_desktop_osx.sh</code> — extra apps + full
+personalization (Dock via dockutil, iTerm2, …).</li>
+</ul></li>
+</ul>
+<p>The rest of this note documents the Termux/Linux stack in detail;
+the WSL2 and macOS scripts follow the same architecture with
+platform-specific substitutions (see each script's header and
+<code>osx/README.md</code>).</p>
 
 <p>Operational note for publishing a minimal X11 graphical desktop
 (Openbox) through the existing cloudflared tunnel, accessible from any

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # =============================================================
-# NodePulse Desktop — customize_desktop_wsl2.sh
+# NodePulse Desktop — 03-customize_desktop_wsl2.sh
 # Installs extra apps + writes user customizations (taskbar, thunar,
 # pcmanfm, task manager, gtk, openbox keybindings, .desktop launchers).
 #
 # Run order:
-#   1) install_desktop_wsl2.sh    (VNC + openbox + noVNC — base)
-#   2) configure_desktop_wsl2.sh  (minimal desktop: thunar/xfdesktop)
-#   3) customize_desktop_wsl2.sh  (this file — full personalization + Chrome)
+#   1) 01-install_desktop_wsl2.sh    (VNC + openbox + noVNC — base)
+#   2) 02-configure_desktop_wsl2.sh  (minimal desktop: thunar/xfdesktop)
+#   3) 03-customize_desktop_wsl2.sh  (this file — full personalization + Chrome)
 #
 # Safe to re-run: every file is backed up before overwrite.
 # Includes: code-launch wrapper, matching .desktop launchers, and
