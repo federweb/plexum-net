@@ -16,45 +16,50 @@ fail() { echo -e "${RED}[FAIL]${NC}  $*" >&2; exit 1; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 
 # xdg-utils postinst tries to install File::MimeInfo via CPAN.
-# CPAN is broken on Termux (misinterprets Makefile.PL as a module name),
+# CPAN.pm is broken on Termux (misinterprets Makefile.PL as a module name),
 # so the postinst fails and leaves xdg-utils half-configured, which then
 # blocks qt6-qtbase and the entire Qt6/KF6 chain.
-# Fix: build File::MimeInfo manually before any pkg install runs.
+# Fix: make File::MimeInfo loadable BEFORE any pkg install runs, using cpanm
+# (which, unlike CPAN.pm, works on Termux and resolves the whole dependency
+# chain: Encode::Locale, File::BaseDir, File::DesktopEntry — all pure Perl).
+# Last resort: neuter the xdg-utils postinst — File::MimeInfo is only used
+# by xdg-mime for file-type queries, irrelevant for this VNC desktop.
 ensure_file_mimeinfo() {
-    perl -e "use File::MimeInfo" 2>/dev/null && return 0
-
-    local MIMEINFO_VER="0.36"
-    local MIMEINFO_AUTHOR="M/MI/MICHIELB"
-    local MIMEINFO_PKG="File-MimeInfo-${MIMEINFO_VER}"
-    local TARBALL="$HOME/.cpan/sources/authors/id/${MIMEINFO_AUTHOR}/${MIMEINFO_PKG}.tar.gz"
-    local BUILD_DIR="$HOME/tmp/cpanbuild_mimeinfo"
+    perl -MFile::MimeInfo -e1 2>/dev/null && return 0
 
     echo "    Pre-installing Perl File::MimeInfo (workaround for xdg-utils postinst)..."
 
-    if [ ! -f "$TARBALL" ]; then
-        mkdir -p "$(dirname "$TARBALL")"
-        curl -L -o "$TARBALL" \
-            "https://cpan.metacpan.org/authors/id/${MIMEINFO_AUTHOR}/${MIMEINFO_PKG}.tar.gz" \
-            2>/dev/null \
-            || { warn "cannot download File::MimeInfo — xdg-utils postinst may fail later"; return 1; }
+    # perl/make normally arrive with the desktop packages, but the module
+    # must be loadable before the xdg-utils postinst runs — install them now.
+    if ! command -v perl >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1; then
+        pkg install perl make -y \
+            || { warn "cannot install perl/make — xdg-utils postinst may fail later"; return 1; }
     fi
 
-    rm -rf "$BUILD_DIR"
-    mkdir -p "$BUILD_DIR"
-    tar xzf "$TARBALL" -C "$BUILD_DIR" 2>/dev/null || { warn "cannot extract File::MimeInfo tarball"; return 1; }
-    (
-        cd "$BUILD_DIR/$MIMEINFO_PKG" \
-            && perl Makefile.PL PREFIX="$PREFIX" 2>/dev/null \
-            && make 2>/dev/null \
-            && make install 2>/dev/null
-    )
-    rm -rf "$BUILD_DIR"
+    local CPANM="$HOME/tmp/cpanm"
+    local CPANM_LOG="$HOME/tmp/cpanm_mimeinfo.log"
+    mkdir -p "$HOME/tmp"
 
-    if perl -e "use File::MimeInfo" 2>/dev/null; then
+    if [ ! -f "$CPANM" ]; then
+        curl -fsSL -o "$CPANM" https://cpanmin.us \
+            || { warn "cannot download cpanm — xdg-utils postinst may fail later"; return 1; }
+    fi
+
+    perl "$CPANM" --notest File::MimeInfo > "$CPANM_LOG" 2>&1
+
+    if perl -MFile::MimeInfo -e1 2>/dev/null; then
         ok "File::MimeInfo installed (xdg-utils postinst will succeed)"
-    else
-        warn "File::MimeInfo install failed — xdg-utils postinst may leave packages half-configured"
+        return 0
     fi
+
+    warn "File::MimeInfo install failed (log: $CPANM_LOG) — disabling xdg-utils postinst sideload"
+    # Only exists after xdg-utils has been unpacked (i.e. on the retry path).
+    local POSTINST="$PREFIX/var/lib/dpkg/info/xdg-utils.postinst"
+    if [ -f "$POSTINST" ] && ! grep -q 'nodepulse: skip broken cpan sideload' "$POSTINST"; then
+        sed -i '2i exit 0 # nodepulse: skip broken cpan sideload' "$POSTINST" \
+            && ok "xdg-utils postinst neutered (File::MimeInfo not needed for VNC desktop)"
+    fi
+    return 0
 }
 
 PREFIX=/data/data/com.termux/files/usr
