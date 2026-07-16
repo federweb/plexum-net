@@ -10,14 +10,16 @@
 # WARNING: SYSTEM COMPATIBILITY CHECK
 # ------------------------------------------------------------------------------
 # TECHNICAL NOTE:
-# This package requires specific kernel-level permissions On standard non-rooted devices, 
-# Android's will terminate the task.
+# Root is NOT required. This script only works with "Disable child process
+# restrictions" (Italian: "Disattiva limitazioni processi secondari") enabled
+# in Android Developer options; without it, Android's phantom-process killer
+# terminates the task.
+# The setting is present on MIUI/HyperOS and some One UI builds; often absent
+# on stock Android. To enable Developer options: Settings -> About phone ->
+# tap "Build number" 7 times, then Settings -> Developer options.
 #
-# ERROR SYMPTOM:
+# ERROR SYMPTOM (setting missing or disabled):
 # [Process completed (signal 9) - press Enter]
-#
-# REQUIREMENTS:
-# 2. Root access OR Native Terminal environment
 # ==============================================================================
 
 # install-desktop.sh

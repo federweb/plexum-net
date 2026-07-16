@@ -20,8 +20,9 @@ websockify shortly after they start. At the very least:</p>
 <strong>Settings → About phone → tap "Build number" 7 times</strong>.</li>
 <li>Open <strong>Settings → Developer options</strong>.</li>
 <li>Look for an entry like <strong>"Disable child process
-restrictions"</strong> and enable it (present on MIUI/HyperOS and some
-One UI builds; often absent on stock Android).</li>
+restrictions"</strong> (Italian: <em>"Disattiva limitazioni processi
+secondari"</em>) and enable it (present on MIUI/HyperOS and some One UI
+builds; often absent on stock Android).</li>
 </ol>
 
 <h2 id="install-scripts">Install scripts</h2>
@@ -35,9 +36,11 @@ openbox + websockify + noVNC + nginx wiring.</li>
 <li><code>02-configure_desktop_termux_minimal.sh</code> — minimal
 desktop configuration.</li>
 <li><code>configure_desktop_termux_root.sh</code> — alternative
-configuration, <strong>rooted devices only</strong> (requires
-kernel-level permissions; on non-rooted devices Android terminates the
-task).</li>
+configuration. Root is <strong>not</strong> required, but it only works
+with <strong>"Disable child process restrictions"</strong> (Italian:
+<em>"Disattiva limitazioni processi secondari"</em>) enabled in
+Developer options — see the Termux prerequisite above; without it,
+Android terminates the task.</li>
 </ul></li>
 <li><strong><code>wsl2/</code></strong> (Windows)
 <ul>
