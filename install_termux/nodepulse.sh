@@ -233,16 +233,18 @@ register_node_local() {
     local IP="$5"
     local PROTOCOL="$6"
 
-    # Read last ID
+    # Read last ID (tolerate a corrupted/truncated DB: fall back to 0)
     LAST_ID=$(php -d opcache.enable=0 -r "
-        \$db = json_decode(file_get_contents('$PULSE_DB'), true);
-        echo \$db['last_id'];
-    ")
+        \$db = json_decode(@file_get_contents('$PULSE_DB'), true);
+        echo (is_array(\$db) && isset(\$db['last_id'])) ? (int)\$db['last_id'] : 0;
+    " 2>/dev/null)
+    case "$LAST_ID" in ''|*[!0-9]*) LAST_ID=0 ;; esac
     NEW_ID=$((LAST_ID + 1))
 
-    # Register the node via PHP
+    # Register the node via PHP (atomic write: tmp file + rename)
     php -d opcache.enable=0 -r "
-        \$db = json_decode(file_get_contents('$PULSE_DB'), true);
+        \$db = json_decode(@file_get_contents('$PULSE_DB'), true);
+        if (!is_array(\$db)) \$db = ['last_id' => 0, 'nodes' => []];
         \$db['last_id'] = $NEW_ID;
         \$db['nodes'][] = [
             'id' => $NEW_ID,
@@ -254,8 +256,10 @@ register_node_local() {
             'protocol' => '$PROTOCOL',
             'status' => 'active'
         ];
-        file_put_contents('$PULSE_DB', json_encode(\$db, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    "
+        \$tmp = '$PULSE_DB' . '.tmp';
+        file_put_contents(\$tmp, json_encode(\$db, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        rename(\$tmp, '$PULSE_DB');
+    " 2>/dev/null
 
     echo ""
     echo "============================================"
