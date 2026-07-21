@@ -537,7 +537,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
             <div class="card-icon">&#x1F3A5;</div>
             <div>
                 <div class="card-title">Meet</div>
-                <div class="card-desc">Video and voice meetings. Create or join a room and connect face-to-face directly from your browser.</div>
+                <div class="card-desc">Video and voice meetings. Create or join a room and connect P2P behind NAT directly from your browser.</div>
             </div>
             <div class="card-arrow">Open &rarr;</div>
         </a>
