@@ -107,7 +107,7 @@ EXTRA_PKGS=(
     # Fonts
     fonts-firacode fonts-jetbrains-mono fonts-noto fonts-noto-color-emoji
     fonts-liberation fonts-ipafont-gothic fonts-wqy-zenhei
-    fonts-tlwg-loma-otf fonts-unifont xfonts-cyrillic xfonts-scalable
+    fonts-tlwg-loma-otf fonts-unifont
 )
 
 MISSING=()
