@@ -39,7 +39,14 @@ $SUDO apt-get install -y \
     pcmanfm \
     xfce4-settings \
     xfdesktop \
-    thunar 
+    xfce4-terminal \
+    thunar
+
+# aterm gets pulled in automatically as a dependency (e.g. by thunar/xfce4-settings)
+# but we ship xfce4-terminal as the default terminal emulator instead.
+if dpkg -s aterm &>/dev/null; then
+    $SUDO apt-get purge -y aterm
+fi
 
 mkdir -p "$HOME/.config/openbox"
 
