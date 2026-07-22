@@ -234,6 +234,16 @@ pkill -f "Xvnc :1" 2>/dev/null
 pkill -f "websockify.*6080" 2>/dev/null
 pkill -f "openbox" 2>/dev/null
 pkill -f "tint2" 2>/dev/null
+# Kill desktop session helpers and any orphan session buses: stale
+# dbus-daemon/gvfsd instances make xfdesktop attach to a dead bus on the
+# next start (GIO unreachable -> degraded right-click menu, pcmanfm crash).
+# Safe on Termux: there is no system bus, all dbus-daemons are session ones.
+pkill -f "xfdesktop" 2>/dev/null
+pkill -f "xfsettingsd" 2>/dev/null
+pkill -f "xfconfd" 2>/dev/null
+pkill -f "thunar" 2>/dev/null
+pkill -f "gvfsd" 2>/dev/null
+pkill -f "dbus-daemon" 2>/dev/null
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null
 echo "[desktop] stopped"
 STOPDESK
