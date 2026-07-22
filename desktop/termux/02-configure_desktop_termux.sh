@@ -69,7 +69,14 @@ mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 # Termux proot via noVNC: already set by openbox-session, skipped.
 [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && eval "$(dbus-launch --sh-syntax --exit-with-session)"
 
-xfsettingsd & (sleep 1 && xfdesktop) & thunar --daemon
+# Ensure the desktop folder exists before xfdesktop starts: on a fresh
+# install it is missing and xfdesktop degrades its right-click menu
+# (no Create Launcher/Folder/Document entries) until restarted.
+mkdir -p "$HOME/Desktop"
+
+# 3s delay: on first boot dbus/gvfs and xfconf caches are still being
+# built; starting xfdesktop too early leaves it on a degraded GIO layer.
+xfsettingsd & (sleep 3 && xfdesktop) & thunar --daemon
 EOF
 
 chmod +x "$HOME/.config/openbox/autostart"
