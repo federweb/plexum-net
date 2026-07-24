@@ -210,6 +210,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
         .card.meet       { --card-accent: #f472b6; }
         .card.twofa      { --card-accent: #fbbf24; }
         .card.pinboard   { --card-accent: #84cc16; }
+        .card.avstream   { --card-accent: #ef4444; }
 
         /* ── Node info bar ───────────────────────────────────── */
         .node-info {
@@ -459,6 +460,18 @@ if ($np_node_id && file_exists($np_directory_file)) {
         </a>
         <?php endif; ?>
 
+        <?php if (is_dir(__DIR__ . '/av_stream')): ?>
+        <!-- AV Stream -->
+        <a href="av_stream/" class="card avstream" aria-label="Open AV Stream">
+            <div class="card-icon">&#x1F9FF;</div>
+            <div>
+                <div class="card-title">AV Stream</div>
+                <div class="card-desc">Low-bandwidth audio/video surveillance from your node's camera. Start and watch the stream remotely through the tunnel.</div>
+            </div>
+            <div class="card-arrow">Open &rarr;</div>
+        </a>
+        <?php endif; ?>
+
         <?php if (is_dir(__DIR__ . '/domainseed')): ?>
         <!-- Domain Seed -->
         <a href="domainseed/" class="card domainseed" aria-label="Domain Seed Registration">
@@ -522,7 +535,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
         <?php if (is_dir(__DIR__ . '/wireog')): ?>
         <!-- Wireog -->
         <a href="wireog/" target="_blank" rel="noopener" class="card wireog" aria-label="Open Wireog">
-            <div class="card-icon" style="background:transparent"><img src="wireog/img/favicon.png" alt="Wireog" style="width:36px;height:36px;object-fit:contain"></div>
+            <div class="card-icon" style="background:white"><img src="wireog/img/favicon.png" alt="Wireog" style="width:36px;height:36px;object-fit:contain"></div>
             <div>
                 <div class="card-title">Wireog</div>
                 <div class="card-desc">Encrypted peer-to-peer video &amp; audio rooms. Create or join a secure conference with no third-party servers.</div>
@@ -534,7 +547,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
         <?php if (is_dir(__DIR__ . '/meet')): ?>
         <!-- Meet -->
         <a href="meet/"  target="_blank" class="card meet" aria-label="Open Meet">
-            <div class="card-icon">&#x1F3A5;</div>
+            <div class="card-icon">&#x1F5E3;</div>
             <div>
                 <div class="card-title">Meet</div>
                 <div class="card-desc">Video and voice meetings. Create or join a room and connect P2P behind NAT directly from your browser.</div>
