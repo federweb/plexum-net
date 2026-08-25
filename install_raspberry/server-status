@@ -1,0 +1,91 @@
+#!/bin/bash
+
+#============================================================
+# server-status (Raspberry Pi)
+# Shows the status of all services, plus the Pi-specific
+# health signals that actually kill long-running nodes:
+# SoC temperature, throttling flags and free memory.
+#============================================================
+
+UID_SELF="$(id -u)"
+
+echo ""
+echo "=== SERVICE STATUS (NodePulse Raspberry Pi) ==="
+echo ""
+
+if pgrep -u "$UID_SELF" -x nginx > /dev/null; then
+    echo "Nginx:       RUNNING"
+else
+    echo "Nginx:       STOPPED"
+fi
+
+if pgrep -u "$UID_SELF" -f "php-cgi" > /dev/null; then
+    echo "PHP-CGI:     RUNNING"
+else
+    echo "PHP-CGI:     STOPPED"
+fi
+
+if pgrep -u "$UID_SELF" -x cloudflared > /dev/null; then
+    echo "Cloudflared: RUNNING"
+else
+    echo "Cloudflared: STOPPED"
+fi
+
+if pgrep -u "$UID_SELF" -f "terminal/daemon" > /dev/null; then
+    echo "Terminal:    RUNNING"
+else
+    echo "Terminal:    STOPPED"
+fi
+
+if pgrep -u "$UID_SELF" -f "www/cli/server.py" > /dev/null; then
+    echo "PulseTerm:   RUNNING (:7681 loopback)"
+else
+    echo "PulseTerm:   STOPPED"
+fi
+
+if pgrep -u "$UID_SELF" -f "services/peerserver/server.js" > /dev/null; then
+    echo "PeerServer:  RUNNING (:9001, /peerjs/)"
+else
+    echo "PeerServer:  STOPPED"
+fi
+
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ] && kill -0 "$(cat "$MAINT_PID_FILE")" 2>/dev/null; then
+    echo "Maintenance: RUNNING"
+else
+    echo "Maintenance: STOPPED"
+fi
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 2>/dev/null)
+echo "HTTP test:   $HTTP_CODE"
+
+if systemctl list-unit-files nodepulse.service > /dev/null 2>&1; then
+    echo "Boot unit:   $(systemctl is-enabled nodepulse 2>/dev/null) / $(systemctl is-active nodepulse 2>/dev/null)"
+fi
+
+echo ""
+echo "=== HARDWARE ==="
+echo ""
+
+if command -v vcgencmd > /dev/null 2>&1; then
+    echo "SoC temp:    $(vcgencmd measure_temp 2>/dev/null | cut -d= -f2)"
+    THROTTLED=$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)
+    if [ "$THROTTLED" = "0x0" ]; then
+        echo "Throttling:  none ($THROTTLED)"
+    else
+        echo "Throttling:  DETECTED ($THROTTLED) — check the power supply / cooling"
+    fi
+elif [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+    echo "SoC temp:    $(( $(cat /sys/class/thermal/thermal_zone0/temp) / 1000 ))'C"
+fi
+
+echo "Memory:      $(free -h 2>/dev/null | awk '/^Mem:/ {print $3" used / "$2" total, "$7" available"}')"
+echo "Disk (~):    $(df -h "$HOME" 2>/dev/null | awk 'NR==2 {print $3" used / "$2" total, "$4" free"}')"
+echo "Uptime:     $(uptime -p 2>/dev/null | sed 's/^up/ up/')"
+
+echo ""
+echo "PHP files:   ~/www/"
+echo "nginx logs:  ~/nginx/logs/"
+echo "Node ID:     $(cat "$HOME/.nodepulse/node_id" 2>/dev/null || echo 'not generated')"
+echo "Gossip log:  ~/.nodepulse/gossip.log"
+echo ""

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+#============================================================
+# stop-server (Raspberry Pi)
+# Stops every service: nginx, php-cgi, cloudflared,
+# nodepulse loop, maintenance daemon, PulseTerminal, PeerServer.
+#
+# Every pkill is scoped to the current user: a Pi is a shared,
+# long-lived machine and unqualified pkill would reach into
+# other users' processes.
+#============================================================
+
+UID_SELF="$(id -u)"
+NGINX_PREFIX="$HOME/nginx"
+NGINX_CONF="$NGINX_PREFIX/nginx.conf"
+
+NGINX_BIN="$(cat "$HOME/.nginx-bin" 2>/dev/null)"
+[ -x "$NGINX_BIN" ] || NGINX_BIN="$(command -v nginx 2>/dev/null)"
+[ -x "$NGINX_BIN" ] || NGINX_BIN="/usr/sbin/nginx"
+
+echo "[...] Stopping all services..."
+
+[ -f "$NGINX_CONF" ] && "$NGINX_BIN" -s stop -c "$NGINX_CONF" -p "$NGINX_PREFIX/" 2>/dev/null
+pkill -u "$UID_SELF" php-cgi 2>/dev/null
+pm2 stop peerserver 2>/dev/null
+
+# Kill nodepulse tunnel loop
+NP_LOOP_PID_FILE="$HOME/tmp/.np_loop_pid"
+if [ -f "$NP_LOOP_PID_FILE" ]; then
+    NP_PID=$(cat "$NP_LOOP_PID_FILE")
+    if [ -n "$NP_PID" ]; then
+        kill "$NP_PID" 2>/dev/null
+    fi
+    rm -f "$NP_LOOP_PID_FILE"
+fi
+pkill -u "$UID_SELF" -f "bin/nodepulse" 2>/dev/null
+
+# Kill maintenance daemon
+MAINT_PID_FILE="$HOME/tmp/.np_maint_pid"
+if [ -f "$MAINT_PID_FILE" ]; then
+    MPID=$(cat "$MAINT_PID_FILE")
+    if [ -n "$MPID" ]; then
+        kill "$MPID" 2>/dev/null
+    fi
+    rm -f "$MAINT_PID_FILE"
+fi
+
+pkill -u "$UID_SELF" cloudflared 2>/dev/null
+pkill -u "$UID_SELF" -f "terminal/daemon" 2>/dev/null
+pkill -u "$UID_SELF" -f "www/cli/server.py" 2>/dev/null
+rm -f ~/tmp/php.socket* 2>/dev/null
+
+# nginx -s stop is asynchronous; if the master ignored it, take it down by pid
+sleep 1
+if [ -f "$NGINX_PREFIX/nginx.pid" ]; then
+    NGX_PID=$(cat "$NGINX_PREFIX/nginx.pid" 2>/dev/null)
+    if [ -n "$NGX_PID" ] && kill -0 "$NGX_PID" 2>/dev/null; then
+        kill "$NGX_PID" 2>/dev/null
+    fi
+fi
+
+echo "[OK] All services stopped."

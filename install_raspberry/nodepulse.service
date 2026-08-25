@@ -1,0 +1,45 @@
+#============================================================
+# NodePulse — systemd unit template
+#
+# Placeholders (%USER%, %GROUP%, %HOME%) are substituted by
+# rpi-setup.sh, which installs the result to
+#   /etc/systemd/system/nodepulse.service
+#
+# Enable at boot:
+#   sudo systemctl enable --now nodepulse
+# Follow the tunnel URL:
+#   journalctl -u nodepulse -f
+#============================================================
+
+[Unit]
+Description=NodePulse node (nginx + php-cgi + Cloudflare tunnel)
+Documentation=https://plexum.net/install.php
+# The tunnel needs a routable network, not just a configured interface
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%USER%
+Group=%GROUP%
+WorkingDirectory=%HOME%
+Environment=HOME=%HOME%
+Environment=PATH=%HOME%/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# start-server ends with the nodepulse loop in the foreground, so the unit
+# stays alive exactly as long as the tunnel supervisor does.
+ExecStart=%HOME%/bin/start-server
+ExecStop=%HOME%/bin/stop-server
+
+# nodepulse.sh already retries cloudflared internally (30s..300s backoff,
+# 5 attempts). This restart covers the case where it gives up entirely.
+Restart=always
+RestartSec=60
+
+# KillMode=mixed: SIGTERM to start-server only, so its trap can run
+# stop-server; the leftovers get SIGKILL after the timeout.
+KillMode=mixed
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,139 @@
+============================================================
+  NodePulse — Raspberry Pi Installation Guide
+============================================================
+
+
+REQUIREMENTS
+------------
+- Raspberry Pi 3, 4 or 5 (Pi 4 with 2GB+ recommended)
+- Raspberry Pi OS 64-bit, Bookworm or newer (Lite is fine)
+- A normal user with sudo (the default "pi" user works)
+- Internet access — no port forwarding, no public IP needed
+
+Do NOT run the installer as root.
+
+
+------------------------------------------------------------
+  INSTALL
+------------------------------------------------------------
+
+1. Copy install_raspberry/ onto the Pi:
+
+    scp -r install_raspberry pi@raspberrypi.local:~/
+
+2. SSH into the Pi:
+
+    ssh pi@raspberrypi.local
+
+3. Run the installer as your normal user:
+
+    cd ~/install_raspberry
+    bash rpi-setup.sh
+
+   The script will:
+   - Install PHP, nginx, Python, Node and cloudflared (arm64)
+   - Download the apps bundle into ~/www/
+   - Configure an unprivileged nginx on port 8080 (prefix ~/nginx/)
+   - Generate the RSA node identity in ~/.nodepulse/
+   - Install the ~/bin commands and a systemd unit
+
+   The "npm install peer" step takes several minutes on a Pi.
+   That is normal — let it finish.
+
+   Wait for "SETUP COMPLETE!" before continuing.
+
+4. Open a new shell so ~/bin lands on your PATH:
+
+    exit
+    ssh pi@raspberrypi.local
+
+
+------------------------------------------------------------
+  START
+------------------------------------------------------------
+
+Foreground (for a first test):
+
+    start-server
+
+The public Cloudflare tunnel URL appears in the output once
+cloudflared connects. Open that URL in your browser.
+
+At boot, supervised by systemd (recommended on a Pi):
+
+    sudo systemctl enable --now nodepulse
+    journalctl -u nodepulse -f
+
+Use one or the other, never both: they compete for port 8080.
+
+
+------------------------------------------------------------
+  OTHER COMMANDS
+------------------------------------------------------------
+
+  stop-server      Stop all services
+  server-status    Services + SoC temperature, throttling, memory
+  run-looped -12   Restart the whole stack every 12 hours
+
+If server-status shows a throttling value other than 0x0, the
+Pi is being throttled — almost always an underpowered power
+supply. It is the usual cause of a node that degrades slowly.
+
+
+------------------------------------------------------------
+  SECURITY
+------------------------------------------------------------
+
+This is a persistent machine, not a throwaway distro, and the
+tunnel exposes it publicly.
+
+- Everything runs as your normal user, never as root.
+- The Terminal and PulseTerminal apps hand out a shell as that
+  user. On Raspberry Pi OS the default user often has
+  passwordless sudo — lock it down:
+
+    sudo passwd -l pi
+
+  or install NodePulse under a dedicated unprivileged account.
+- Set the auth_gate password on first access, BEFORE sharing
+  the tunnel URL. Anything not behind auth_gate is public.
+
+
+------------------------------------------------------------
+  TROUBLESHOOTING
+------------------------------------------------------------
+
+  Package install failed
+    See ~/tmp/apt-install.log for the real apt error.
+
+  PHP execution failed / 502
+    See ~/nginx/logs/error.log — the unprivileged nginx logs
+    there, not in /var/log/nginx.
+
+  Port 8080 already in use
+    ss -ltnp | grep 8080
+    The packaged nginx service is disabled by the installer;
+    something else is holding the port.
+
+  Tunnel keeps crashing
+    nodepulse retries 5 times (30s..300s backoff) then stops.
+    Re-run start-server, or let the systemd unit restart it.
+
+
+------------------------------------------------------------
+  UNINSTALL
+------------------------------------------------------------
+
+  sudo systemctl disable --now nodepulse
+  sudo rm /etc/systemd/system/nodepulse.service
+  sudo systemctl daemon-reload
+  pm2 delete peerserver; pm2 kill
+  rm -rf ~/www ~/nginx ~/bin ~/tmp ~/services ~/.nodepulse
+  rm -f ~/.server-mode ~/.nginx-bin
+  sudo rm -f /etc/php/*/cgi/conf.d/nodepulse.ini
+
+Deleting ~/.nodepulse/ destroys the node identity: the node
+rejoins the network as a brand new node_id. Back it up first
+if you want to keep it.
+
+============================================================
