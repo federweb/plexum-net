@@ -16,7 +16,7 @@ The canonical, always up‑to‑date installation guide lives at:
 
 **→ https://www.plexum.net/install.php**
 
-All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identical nodes with the same identity model and protocol behavior. The legacy MSYS2 port (`install_msys2/`) is deprecated and no longer supported.
+All supported platforms (Termux/Android, WSL2/Windows, macOS and Raspberry Pi OS) produce identical nodes with the same identity model and protocol behavior. The legacy MSYS2 port (`install_msys2/`) is deprecated and no longer supported.
 
 ### Prerequisites
 
@@ -40,6 +40,13 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
 - Intel or Apple Silicon
 - ~3 GB free storage: the installer bootstraps Homebrew (and the Xcode Command Line Tools) if missing, then pulls PHP, nginx, Python and Node.js
 - Active internet connection
+
+**Raspberry Pi**
+- Raspberry Pi 3, 4 or 5 (Pi 4 with 2 GB+ recommended)
+- Raspberry Pi OS 64‑bit, Bookworm or newer — Lite is fine, no desktop needed (32‑bit is detected and installed, but untested)
+- A normal user account with `sudo` (the default `pi` user works) — **do not run the installer as root**
+- A power supply that can actually feed the board: undervolt throttling is the most common cause of a node degrading over days
+- Active internet connection — no port forwarding and no public IP required
 
 ### Termux (Android)
 
@@ -129,6 +136,54 @@ All supported platforms (Termux/Android, WSL2/Windows and macOS) produce identic
    pm2 delete peerserver 2>/dev/null; rm -rf ~/.nodepulse ~/www ~/nodepulse-bin ~/services/peerserver ~/.server-mode ~/bin/start-server ~/bin/stop-server ~/bin/server-status ~/bin/nodepulse
    ```
    Homebrew packages (php, nginx, cloudflared, python, tmux, node) stay installed — remove them with `brew uninstall` if no longer needed, and delete the `# NodePulse` block from your shell rc file.
+
+### Raspberry Pi
+
+1. **Install** — SSH into the Pi and run this **as your normal user, not root**:
+   ```
+   curl -L -O https://www.plexum.net/nodepulse/core-dist/install_raspberry.zip && unzip -o install_raspberry.zip && bash ./rpi-setup.sh
+   ```
+   The installer pulls dependencies (PHP, nginx, Python, Node.js, tmux, and the arch‑detected `linux-arm64`/`armhf` cloudflared build), downloads the apps bundle into `~/www/`, configures an **unprivileged** nginx on port 8080 with its own prefix `~/nginx/` (the system‑wide nginx service is disabled), generates the RSA‑2048 keypair in `~/.nodepulse/`, installs the `~/bin/` commands and the `nodepulse` systemd unit (installed, not enabled).
+
+   The `npm install peer` step takes several minutes on a Pi. That is normal — let it finish.
+
+2. **Open a new shell** (or `source ~/.bashrc`) so `~/bin` lands on your `PATH`.
+
+3. **Start the server** — in the foreground, for a first test:
+   ```
+   start-server
+   ```
+   The public Cloudflare tunnel URL appears in the output once cloudflared connects.
+
+4. **Start at boot** — supervised by systemd, which is the point of running on a Pi:
+   ```
+   sudo systemctl enable --now nodepulse
+   journalctl -u nodepulse -f
+   ```
+   Use one or the other, never both at once: the foreground `start-server` and the unit compete for port 8080.
+
+5. **First access** — open the tunnel URL in a browser. On first access you'll set the password that protects Terminal, Cloud, File Manager and the other gated apps. Local access is available at `http://localhost:8080`.
+
+6. **Stop / status:**
+   ```
+   stop-server
+   server-status
+   ```
+   On a Pi `server-status` also reports SoC temperature, throttling (`vcgencmd get_throttled`), memory and disk. Anything other than `0x0` means the board is being throttled — almost always an underpowered PSU.
+
+7. **Security note** — unlike the WSL2 fork, this is not a disposable distro: the Pi is a persistent machine on your LAN and the tunnel exposes it publicly. The Terminal and PulseTerminal apps hand out a shell as whichever user runs the stack, and on Raspberry Pi OS the default user often has passwordless `sudo`. Run `sudo passwd -l pi`, or drop the user from the `sudo` group, or install NodePulse under a dedicated unprivileged account. Set the auth gate password **before** sharing the tunnel URL — anything not behind it is world‑readable.
+
+8. **Uninstall:**
+   ```
+   sudo systemctl disable --now nodepulse
+   sudo rm /etc/systemd/system/nodepulse.service && sudo systemctl daemon-reload
+   pm2 delete peerserver 2>/dev/null; pm2 kill 2>/dev/null
+   rm -rf ~/www ~/nginx ~/bin ~/tmp ~/services ~/.nodepulse ~/.server-mode ~/.nginx-bin
+   sudo rm -f /etc/php/*/cgi/conf.d/nodepulse.ini
+   ```
+   Deleting `~/.nodepulse/` destroys the node identity: the node rejoins the network as a brand new `node_id`. Back that folder up if you want to keep it.
+
+Full details, including a WSL2/Raspberry Pi comparison and extended troubleshooting, are in [`install_raspberry/README.md`](install_raspberry/README.md).
 
 ### Scheduled restart (`run-looped`)
 
