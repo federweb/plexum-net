@@ -201,7 +201,7 @@ run-looped -<hours>
 run-looped -12
 ```
 
-The command is installed alongside `start-server`/`stop-server` (on PATH for WSL2; under `~/bin/` on Termux and macOS, e.g. `bash ~/bin/run-looped -12`). It runs a long-lived loop, so launch it inside `tmux` (or with `nohup`) to keep it alive after you close the session. Press `Ctrl-C` to stop the loop cleanly (it runs `stop-server` on exit). Note: each restart of the cloudflared quick tunnel produces a new public URL.
+The command is installed alongside `start-server`/`stop-server` (on PATH for WSL2 and Raspberry Pi, where `~/bin` is added to `PATH` by `.bashrc`; under `~/bin/` on Termux and macOS, e.g. `bash ~/bin/run-looped -12`). On a Raspberry Pi running under systemd the watchdog is redundant: the `nodepulse` unit already has `Restart=always`. It runs a long-lived loop, so launch it inside `tmux` (or with `nohup`) to keep it alive after you close the session. Press `Ctrl-C` to stop the loop cleanly (it runs `stop-server` on exit). Note: each restart of the cloudflared quick tunnel produces a new public URL.
 
 ### How it works
 
@@ -212,8 +212,10 @@ The installer generates an RSA‑2048 keypair (the unique node identity), starts
 | Issue | Solution |
 |-------|----------|
 | Tunnel URL missing | Cloudflared takes 10–30 seconds — check the connection and wait. |
-| Port 8080 in use | Run `stop-server` (or `bash ~/bin/stop-server` on Termux/macOS) to free it. |
+| Port 8080 in use | Run `stop-server` (bare command on WSL2 and Raspberry Pi; `bash ~/bin/stop-server` on Termux/macOS) to free it. |
 | Node not visible in monitor | Network propagation takes 1–2 minutes — refresh the monitor page. |
+| PHP errors / 502 on Raspberry Pi | Check `~/nginx/logs/error.log` — the unprivileged nginx does not log to `/var/log/nginx`. |
+| Node slow or unstable on Raspberry Pi | Run `server-status`: a throttling value other than `0x0` means an underpowered power supply. |
 | Full removal | `rm -rf ~/.nodepulse ~/www ~/.server-mode ~/services/peerserver ~/bin/start-server ~/bin/stop-server ~/bin/server-status ~/bin/nodepulse` — on macOS use the Uninstall step above. |
 
 **Support:** dev@plexum.org
