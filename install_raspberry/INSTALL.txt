@@ -52,19 +52,64 @@ Do NOT run the installer as root.
   START
 ------------------------------------------------------------
 
-Foreground (for a first test):
+There are two ways to run the node, and you should end up
+using the second one. Never both at once: they compete for
+port 8080 and the loser dies on startup.
+
+
+1) BY HAND — for the first test only
 
     start-server
 
-The public Cloudflare tunnel URL appears in the output once
-cloudflared connects. Open that URL in your browser.
+Everything runs in the foreground of your shell. The public
+Cloudflare tunnel URL appears in the output once cloudflared
+connects; open it in a browser to confirm the node works.
 
-At boot, supervised by systemd (recommended on a Pi):
+This mode dies when you close the SSH session, and nothing
+comes back after a reboot or a power cut. Use it once, to see
+that the stack is healthy, then move on.
 
+
+2) SUPERVISED BY SYSTEMD — how a Pi is meant to run
+
+rpi-setup.sh installed /etc/systemd/system/nodepulse.service
+but left it disabled, so this step is yours to take:
+
+    stop-server                          # kill the manual run first
     sudo systemctl enable --now nodepulse
-    journalctl -u nodepulse -f
 
-Use one or the other, never both: they compete for port 8080.
+    systemctl is-enabled nodepulse       # must print: enabled
+    journalctl -u nodepulse -f           # follow the tunnel URL
+
+"enable" writes a symlink under multi-user.target.wants/. It
+lives on the SD card, so it survives reboots and power cuts:
+pull the plug, plug it back in, and systemd starts the node on
+its own once the network is up — no login, no SSH session, no
+"linger" needed. "--now" just also starts it immediately so
+you do not have to reboot to test.
+
+The unit stays alive as long as the tunnel does, because
+start-server ends with the nodepulse supervisor loop in the
+foreground. If cloudflared crashes, that loop retries on its
+own (5 times, 30s..300s backoff). If it gives up entirely,
+Restart=always brings the whole stack back 60 seconds later.
+
+From here on, manage the node through systemd, not ~/bin:
+
+    sudo systemctl start nodepulse       # was: start-server
+    sudo systemctl stop nodepulse        # was: stop-server
+    sudo systemctl restart nodepulse
+    journalctl -u nodepulse -f           # was: the shell output
+
+Two things change once systemd owns the node:
+
+- The tunnel URL is no longer on your screen. It goes to the
+  journal instead:
+      journalctl -u nodepulse -b | grep -i trycloudflare
+- The quick tunnel URL is different after every restart. The
+  node comes back by itself, but at a new public address —
+  which is exactly what the announce to the seeds is for. An
+  old bookmark will not follow it; the Plexum network will.
 
 
 ------------------------------------------------------------
@@ -74,6 +119,12 @@ Use one or the other, never both: they compete for port 8080.
   stop-server      Stop all services
   server-status    Services + SoC temperature, throttling, memory
   run-looped -12   Restart the whole stack every 12 hours
+
+stop-server stays useful as an emergency hammer, but under
+systemd you rarely call it: systemctl stop already runs it via
+ExecStop. run-looped is for the by-hand mode only — with the
+unit enabled, Restart=always already covers it, and running
+both just fights over port 8080.
 
 If server-status shows a throttling value other than 0x0, the
 Pi is being throttled — almost always an underpowered power
@@ -117,7 +168,15 @@ tunnel exposes it publicly.
 
   Tunnel keeps crashing
     nodepulse retries 5 times (30s..300s backoff) then stops.
-    Re-run start-server, or let the systemd unit restart it.
+    Under systemd the unit restarts it 60s later on its own;
+    by hand, re-run start-server.
+
+  Nothing came back after a reboot
+    systemctl is-enabled nodepulse
+    If it prints "disabled", the enable step was never done —
+    see START, part 2. If it prints "enabled" but the node is
+    down, read the journal for this boot:
+        journalctl -u nodepulse -b
 
 
 ------------------------------------------------------------

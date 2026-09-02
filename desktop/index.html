@@ -60,11 +60,24 @@ unattended remote access (no sleep, Finder/Dock defaults).</li>
 <li><code>03-customize_desktop_osx.sh</code> — extra apps + full
 personalization (Dock via dockutil, iTerm2, …).</li>
 </ul></li>
+<li><strong><code>raspberry/</code></strong> (Raspberry Pi OS)
+<ul>
+<li><code>01-install_desktop_raspberry.sh</code> — base stack (Xvnc +
+openbox + noVNC) as a normal user with sudo, wired into the
+unprivileged nginx in <code>~/nginx/</code>; the desktop starts with
+the <code>nodepulse</code> systemd unit, no login needed. Works on
+Raspberry Pi OS Lite (no monitor, no native desktop required).</li>
+<li><code>02-configure_desktop_raspberry.sh</code> — minimal desktop
+(thunar/xfdesktop).</li>
+<li><code>03-customize_desktop_raspberry.sh</code> — extra apps + full
+personalization (taskbar, launchers, Chromium instead of Chrome —
+no arm64 build — and VSCode from the Pi OS repo).</li>
+</ul></li>
 </ul>
 <p>The rest of this note documents the Termux/Linux stack in detail;
-the WSL2 and macOS scripts follow the same architecture with
-platform-specific substitutions (see each script's header and
-<code>osx/README.md</code>).</p>
+the WSL2, macOS and Raspberry Pi scripts follow the same architecture
+with platform-specific substitutions (see each script's header,
+<code>osx/README.md</code> and <code>raspberry/README.md</code>).</p>
 
 <p>Operational note for publishing a minimal X11 graphical desktop
 (Openbox) through the existing cloudflared tunnel, accessible from any
