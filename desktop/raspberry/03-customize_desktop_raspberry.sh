@@ -990,7 +990,7 @@ LOG="${TMPDIR:-/tmp}/code-launch-$(id -u).log"
   echo "USER=$USER PWD=$PWD"
 } >> "$LOG" 2>&1
 
-exec setsid env DISPLAY="${DISPLAY:-:1.0}" \
+exec setsid env DISPLAY="${DISPLAY:-:2.0}" \
   /usr/bin/code --disable-gpu "$@" \
   >> "$LOG" 2>&1 < /dev/null
 EOF

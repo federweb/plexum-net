@@ -77,7 +77,15 @@ PKGS=(
     x11-xserver-utils xfonts-base fonts-dejavu-core
 )
 
-VNC_BIN=$(command -v Xvnc 2>/dev/null || command -v Xtigervnc 2>/dev/null || true)
+# Xtigervnc checked FIRST, not Xvnc: recent Raspberry Pi OS images ship
+# RealVNC Server pre-installed, which also owns the generic /usr/bin/Xvnc
+# path. RealVNC's real process runs as "Xvnc-core" behind an "Xvnc
+# -rootHelper" wrapper — a totally different process tree that none of
+# start-desktop/stop-desktop's "Xvnc :N" pkill patterns can ever match, so
+# picking it here silently leaks an orphaned VNC server (holding the RFB
+# port) on every restart. Xtigervnc is a name only tigervnc-standalone-server
+# ever provides, so it can't collide with RealVNC.
+VNC_BIN=$(command -v Xtigervnc 2>/dev/null || command -v Xvnc 2>/dev/null || true)
 
 MISSING=()
 for p in "${PKGS[@]}"; do
@@ -94,7 +102,7 @@ else
     ok "packages installed"
 fi
 
-VNC_BIN=$(command -v Xvnc 2>/dev/null || command -v Xtigervnc 2>/dev/null || true)
+VNC_BIN=$(command -v Xtigervnc 2>/dev/null || command -v Xvnc 2>/dev/null || true)
 [ -n "$VNC_BIN" ]                     || fail "Xvnc/Xtigervnc not found after install"
 command -v openbox >/dev/null 2>&1    || fail "openbox not found after install"
 
@@ -215,11 +223,21 @@ cat > "$HOME/bin/start-desktop" << 'STARTDESK'
 
 UID_SELF="$(id -u)"
 
-VNC_BIN=$(command -v Xvnc 2>/dev/null || command -v Xtigervnc 2>/dev/null)
+# Xtigervnc first, not Xvnc: on Raspberry Pi OS the generic /usr/bin/Xvnc
+# path is often RealVNC Server (system default), whose real process is
+# "Xvnc-core" behind an "Xvnc -rootHelper" wrapper — the pkill patterns
+# below can never match that process tree, leaking an orphaned VNC server
+# holding the RFB port on every restart. See 01-install for the full story.
+VNC_BIN=$(command -v Xtigervnc 2>/dev/null || command -v Xvnc 2>/dev/null)
 [ -z "$VNC_BIN" ] && { echo "[desktop] ERROR: Xvnc/Xtigervnc not found — install tigervnc-standalone-server"; exit 1; }
 
-DISPLAY_NUM=1
-VNC_PORT=5901
+# Display :1 / port 5901 is what RealVNC Server's own "Virtual Mode"
+# uses by default on Raspberry Pi OS — running NodePulse there collides
+# head-on with a preexisting system service on the exact same resource,
+# not just an occasional stray process. :2 / 5902 keeps both independently
+# reachable: RealVNC's virtual desktop on :1, NodePulse's Openbox on :2.
+DISPLAY_NUM=2
+VNC_PORT=5902
 WS_PORT=6080
 # 1280x720@24 is a good compromise for a Pi: a bigger framebuffer costs
 # CPU on every screen update (Xvnc renders in software, the VideoCore GPU
@@ -234,23 +252,64 @@ mkdir -p "$LOG_DIR"
 # A normal user cannot chmod it, so just make sure it exists.
 mkdir -p /tmp/.X11-unix 2>/dev/null
 
+# Wait for a killed process matching $1 to actually disappear instead of
+# trusting a fixed sleep. A manual "stop-desktop; start-desktop" happens
+# within ~1s — not enough time for the OLD Xvnc to release the X11 socket
+# and RFB port after SIGTERM. A full node restart (stop-server/start-server)
+# happens to work because other services in between buy it more time; back
+# to back it races the new Xvnc, which then either fails to bind or leaves
+# a display noVNC connects to before xstartup has drawn anything (grey X
+# root stipple pattern, no window manager, until the next full restart).
+wait_gone() {
+    local pattern="$1" tries=0
+    while pgrep -u "$UID_SELF" -f "$pattern" >/dev/null 2>&1; do
+        tries=$((tries + 1))
+        [ "$tries" -ge 20 ] && { pkill -9 -u "$UID_SELF" -f "$pattern" 2>/dev/null; break; }
+        sleep 0.25
+    done
+}
+
 # Clean up previous sessions (only our own processes — shared machine)
 pkill -u "$UID_SELF" -f "Xvnc :$DISPLAY_NUM" 2>/dev/null
 pkill -u "$UID_SELF" -f "Xtigervnc :$DISPLAY_NUM" 2>/dev/null
 pkill -u "$UID_SELF" -f "websockify.*$WS_PORT" 2>/dev/null
+wait_gone "Xvnc :$DISPLAY_NUM"
+wait_gone "Xtigervnc :$DISPLAY_NUM"
+wait_gone "websockify.*$WS_PORT"
 rm -f /tmp/.X${DISPLAY_NUM}-lock /tmp/.X11-unix/X${DISPLAY_NUM} 2>/dev/null
-sleep 1
 
 # Xvnc (loopback only, no VNC auth — protected by auth_gate)
+# -nolisten tcp: only the RFB port ($VNC_PORT, proxied by websockify) is
+# ever needed — nothing here speaks raw X11 protocol to a remote host.
+# Without it Xvnc also opens the plain-X11 TCP listener on 6000+display,
+# a second port a leftover process can hold onto across restarts.
 "$VNC_BIN" :$DISPLAY_NUM \
     -geometry "$GEOMETRY" \
     -depth "$DEPTH" \
     -rfbport $VNC_PORT \
     -localhost \
+    -nolisten tcp \
     -SecurityTypes None \
     -desktop "NodePulse" \
     > "$LOG_DIR/xvnc.log" 2>&1 &
-sleep 2
+XVNC_PID=$!
+
+# Wait for the X11 socket to actually exist instead of a blind sleep — Xvnc
+# startup time varies with SD card I/O load, especially right after a
+# stop-desktop that just released the same display/port.
+tries=0
+while [ ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 40 ]; then
+        echo "[desktop] WARNING: Xvnc socket not ready after 10s — see $LOG_DIR/xvnc.log" >&2
+        break
+    fi
+    if ! kill -0 "$XVNC_PID" 2>/dev/null; then
+        echo "[desktop] ERROR: Xvnc exited immediately — see $LOG_DIR/xvnc.log" >&2
+        break
+    fi
+    sleep 0.25
+done
 
 # Openbox session
 DISPLAY=:$DISPLAY_NUM "$HOME/.vnc/xstartup" > "$LOG_DIR/xstartup.log" 2>&1 &
@@ -276,8 +335,26 @@ cat > "$HOME/bin/stop-desktop" << 'STOPDESK'
 # Every pkill is scoped to our uid: the system dbus-daemon runs as
 # 'messagebus' and other users' sessions must not be touched.
 UID_SELF="$(id -u)"
-pkill -u "$UID_SELF" -f "Xvnc :1" 2>/dev/null
-pkill -u "$UID_SELF" -f "Xtigervnc :1" 2>/dev/null
+
+# Wait for a killed process matching $1 to actually disappear (SIGKILL
+# after ~5s if it doesn't) instead of returning as soon as pkill fires.
+# start-desktop reuses the same display/port/socket right after this
+# script returns — if Xvnc or websockify are still shutting down, the new
+# instance can race them (see start-desktop for the full explanation).
+wait_gone() {
+    local pattern="$1" tries=0
+    while pgrep -u "$UID_SELF" -f "$pattern" >/dev/null 2>&1; do
+        tries=$((tries + 1))
+        [ "$tries" -ge 20 ] && { pkill -9 -u "$UID_SELF" -f "$pattern" 2>/dev/null; break; }
+        sleep 0.25
+    done
+}
+
+# Display :2 — deliberately not :1, which is RealVNC Server's own
+# "Virtual Mode" default on Raspberry Pi OS. Keep this in sync with
+# DISPLAY_NUM/VNC_PORT in start-desktop.
+pkill -u "$UID_SELF" -f "Xvnc :2" 2>/dev/null
+pkill -u "$UID_SELF" -f "Xtigervnc :2" 2>/dev/null
 pkill -u "$UID_SELF" -f "websockify.*6080" 2>/dev/null
 pkill -u "$UID_SELF" -f "openbox" 2>/dev/null
 pkill -u "$UID_SELF" -f "tint2" 2>/dev/null
@@ -290,9 +367,16 @@ pkill -u "$UID_SELF" -f "xfconfd" 2>/dev/null
 pkill -u "$UID_SELF" -f "thunar" 2>/dev/null
 pkill -u "$UID_SELF" -f "gvfsd" 2>/dev/null
 pkill -u "$UID_SELF" -f "dunst" 2>/dev/null
-pkill -u "$UID_SELF" -f "dbus-daemon --sh-syntax" 2>/dev/null
+# "dbus-daemon --sh-syntax" never matches: --sh-syntax is a dbus-launch
+# flag, it never appears in the spawned dbus-daemon's own cmdline. Kill the
+# per-user session bus by process name instead (safe: the system bus runs
+# as 'messagebus', never as this uid).
+pkill -u "$UID_SELF" dbus-daemon 2>/dev/null
 pkill -u "$UID_SELF" -f "dbus-launch" 2>/dev/null
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null
+wait_gone "Xvnc :2"
+wait_gone "Xtigervnc :2"
+wait_gone "websockify.*6080"
+rm -f /tmp/.X2-lock /tmp/.X11-unix/X2 2>/dev/null
 echo "[desktop] stopped"
 STOPDESK
 
@@ -538,7 +622,7 @@ check() {
     fi
 }
 
-VNC_BIN_CHECK=$(command -v Xvnc 2>/dev/null || command -v Xtigervnc 2>/dev/null || true)
+VNC_BIN_CHECK=$(command -v Xtigervnc 2>/dev/null || command -v Xvnc 2>/dev/null || true)
 
 check "Xvnc/Xtigervnc binary"    test -n "$VNC_BIN_CHECK"
 check "openbox binary"           command -v openbox

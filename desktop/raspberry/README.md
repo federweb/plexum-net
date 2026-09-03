@@ -29,7 +29,7 @@ no login, and starts from `start-server` like every other NodePulse service.
 So the Pi reuses the WSL2/Termux pipeline unchanged:
 
 ```
-Pi:     Xvnc :5901 (virtual display) ← openbox + tint2 + thunar
+Pi:     Xvnc :5902 (virtual display) ← openbox + tint2 + thunar
                  │
         websockify :6080 ──→ noVNC ──→ nginx /desktop/ ──→ auth_gate ──→ cloudflared
 ```
@@ -37,6 +37,20 @@ Pi:     Xvnc :5901 (virtual display) ← openbox + tint2 + thunar
 The browser experience is identical: open `https://<tunnel>/desktop/`, pass
 the auth_gate, and get a full desktop via noVNC. On the LAN the same desktop
 is at `http://raspberrypi.local:8080/desktop/`.
+
+**Display :2 / port 5902, not :1 / 5901.** Raspberry Pi OS ships RealVNC
+Server, whose own "Virtual Mode" defaults to display `:1` / port `5901` —
+the same numbers TigerVNC-based ports traditionally use. Landing NodePulse
+on `:1` collides head-on with that preexisting system service (same
+display, same port, same lock file), not just an occasional stray process:
+neither service's cleanup can ever touch the other's, so restarts leave one
+of them permanently stuck holding the port. `:2` / `5902` keeps RealVNC's
+virtual desktop and NodePulse's Openbox desktop independently reachable at
+the same time. Also worth knowing: on this same binary name, Raspberry Pi
+OS's `/usr/bin/Xvnc` is often RealVNC itself (running as `Xvnc-core` behind
+an `Xvnc -rootHelper` wrapper) rather than TigerVNC — `start-desktop`
+explicitly prefers `Xtigervnc`, a name only `tigervnc-standalone-server`
+provides, to avoid picking it up by accident.
 
 ## Files
 
@@ -75,11 +89,16 @@ be completed first. The scripts check for `~/nginx/nginx.conf`,
    runs. Enable the unit and the desktop comes back after every reboot or
    power cut, with nobody logged in.
 
-2. **Apply changes with a restart of the whole node**, not just the desktop:
+2. **`stop-desktop` / `start-desktop` are safe to run back-to-back on their
+   own** — both wait for the old Xvnc/websockify to actually die before
+   touching the display/port again, instead of trusting a fixed sleep. A
+   full node restart still works too, for changes that need the rest of the
+   stack (nginx conf, etc.):
 
    ```bash
-   stop-server && start-server           # by hand
-   sudo systemctl restart nodepulse      # under systemd
+   stop-desktop && start-desktop         # desktop only
+   stop-server && start-server           # whole node, by hand
+   sudo systemctl restart nodepulse      # whole node, under systemd
    ```
 
 3. **Resolution and depth** default to 1280x720 @ 24 bit. Xvnc renders in
@@ -104,6 +123,13 @@ be completed first. The scripts check for `~/nginx/nginx.conf`,
    independent from whatever runs on HDMI: two different displays, two
    different sessions, same user. Nothing you do in the browser appears on
    the physical screen and vice versa.
+
+7. **RealVNC's own virtual desktop keeps working, unchanged.** If you (or a
+   past setup) already use Raspberry Pi OS's built-in RealVNC Server —
+   connecting with a native VNC client to `:1` / port 5901, e.g. over
+   WireGuard — that session is untouched by any of this. NodePulse's
+   Openbox desktop lives entirely on `:2` / port 5902; the two are
+   reachable at the same time and never fight over the same socket.
 
 ## Usage
 
