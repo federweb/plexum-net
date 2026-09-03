@@ -82,6 +82,11 @@ async def _pty_bridge(ws, cmd, args, tmux_target=None):
     """
     pid, fd = pty.fork()
     if pid == 0:
+        # tmux attach refuses to open the terminal ("terminal does not
+        # support clear") when TERM is missing. That happens when the server
+        # is launched by systemd (Raspberry Pi), whose unit exports no TERM.
+        # setdefault leaves an inherited TERM untouched (Termux/WSL2/macOS).
+        os.environ.setdefault("TERM", "xterm-256color")
         os.execvp(cmd, args)
         sys.exit(1)
 
