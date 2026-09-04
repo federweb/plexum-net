@@ -144,11 +144,14 @@ function createRoom(string $sessionPwd, array $messages): array {
         $zip->close();
         unlink($destination);
 
+        // One JSON object per line (JSON Lines) so chat.php can append
+        // new messages without rewriting the whole file.
         $sanitizedMessages = [
             ['id' => 1, 'user' => 'System', 'message' => 'admin has joined the room', 'type' => 'system'],
             ['id' => 2, 'user' => 'admin', 'message' => $welcomeCiphertext, 'type' => 'text', 'timestamp' => time()],
         ];
-        file_put_contents("$folderPath/messages.json", json_encode($sanitizedMessages, JSON_PRETTY_PRINT));
+        $lines = array_map('json_encode', $sanitizedMessages);
+        file_put_contents("$folderPath/messages.json", implode("\n", $lines) . "\n");
 
     } else {
         return ['success' => false, 'error' => 'Error extract zip file'];

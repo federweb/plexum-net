@@ -34,64 +34,99 @@ $roomId = getCurrentRoomId();
 
 
 
+// Messages are stored one JSON object per line (JSON Lines), not as a
+// single JSON array, so a new message can be appended to the file
+// without ever reading or rewriting the messages that came before it.
 function loadMessages() {
     global $messagesFile;
-    
+
     if (!file_exists($messagesFile)) {
         return [];
     }
-    
+
     $fp = fopen($messagesFile, 'r');
     if (!$fp) {
         return [];
     }
-    
+
+    $messages = [];
     if (flock($fp, LOCK_SH)) {
-        $content = '';
-        while (!feof($fp)) {
-            $content .= fread($fp, 8192);
+        while (($line = fgets($fp)) !== false) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $messages[] = $decoded;
+            }
         }
         flock($fp, LOCK_UN);
-        fclose($fp);
-        
-        $decoded = json_decode($content, true);
-        return $decoded ? $decoded : [];
-    } else {
-        fclose($fp);
-        return [];
     }
+    fclose($fp);
+
+    return $messages;
 }
 
-function saveMessages($messages) {
+// Reads only the last line of the file (seeking backward in chunks)
+// instead of the whole thing, so computing the next message id stays
+// cheap no matter how long the chat history is.
+function getLastJsonLine($fp) {
+    fseek($fp, 0, SEEK_END);
+    $pos = ftell($fp);
+    if ($pos === 0) {
+        return null;
+    }
+
+    $chunkSize = 4096;
+    $buffer = '';
+
+    while ($pos > 0) {
+        $readSize = min($chunkSize, $pos);
+        $pos -= $readSize;
+        fseek($fp, $pos);
+        $buffer = fread($fp, $readSize) . $buffer;
+
+        $trimmed = rtrim($buffer, "\n");
+        $newlinePos = strrpos($trimmed, "\n");
+        if ($newlinePos !== false) {
+            return substr($trimmed, $newlinePos + 1);
+        }
+        if ($pos === 0) {
+            return $trimmed;
+        }
+    }
+
+    return null;
+}
+
+// Full rewrite of the file, used only by /deleteall to truncate the
+// history back down to the welcome messages. Locks the real file (not
+// a temp copy) so it can never race with a concurrent appendMessage().
+function writeAllMessages($messages) {
     global $messagesFile;
-    
-    $tempFile = $messagesFile . '.tmp.' . uniqid();
-    $content = json_encode($messages);
-    
-    $fp = fopen($tempFile, 'w');
+
+    $fp = fopen($messagesFile, 'c+');
     if (!$fp) {
         return false;
     }
-    
-    if (flock($fp, LOCK_EX)) {
-        $bytesWritten = fwrite($fp, $content);
-        fflush($fp);
-        flock($fp, LOCK_UN);
+
+    if (!flock($fp, LOCK_EX)) {
         fclose($fp);
-        
-        if ($bytesWritten === strlen($content)) {
-            if (rename($tempFile, $messagesFile)) {
-                return true;
-            }
-        }
-    } else {
-        fclose($fp);
+        return false;
     }
-    
-    if (file_exists($tempFile)) {
-        unlink($tempFile);
-    }
-    return false;
+
+    $lines = array_map('json_encode', $messages);
+    $content = $lines ? implode("\n", $lines) . "\n" : '';
+
+    ftruncate($fp, 0);
+    rewind($fp);
+    $bytesWritten = fwrite($fp, $content);
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+
+    return $bytesWritten === strlen($content);
 }
 
 function loadUsers() {
@@ -217,43 +252,61 @@ function isRoomBlocked() {
     return $roomData['blocked'] ?? false;
 }
 
-function safeAddMessage($user, $message, $type = 'text', $mimeType = null) {
-    $maxRetries = 5;
-    $baseDelay = 100000;
-    
-    for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
-        $messages = loadMessages();
+// Appends one message under a single exclusive lock: read the last
+// line to derive the next id, then write the new line at EOF. flock()
+// blocks until the lock is free, so unlike the old retry/backoff loop
+// this can't silently lose a message to a concurrent writer.
+function appendMessage($user, $message, $type = 'text', $mimeType = null) {
+    global $messagesFile;
 
-
-        $newId = !empty($messages) ? max(array_column($messages, 'id')) + 1 : 1;
-        
-        $newMessage = [
-            'id' => $newId,
-            'user' => $user,
-            'message' => $message,
-            'type' => $type,
-            'timestamp' => time()
-        ];
-        
-        if ($mimeType) {
-            $newMessage['mimeType'] = $mimeType;
-        }
-        
-        $messages[] = $newMessage;
-        
-        if (saveMessages($messages)) {
-            return ['success' => true, 'id' => $newId];
-        }
-        
-        $delay = $baseDelay * pow(2, $attempt);
-        usleep($delay + rand(0, $delay / 2));
+    $fp = fopen($messagesFile, 'c+');
+    if (!$fp) {
+        return ['success' => false, 'error' => 'Unable to open messages file'];
     }
-    
-    return ['success' => false, 'error' => 'Failed to save message after retries'];
+
+    if (!flock($fp, LOCK_EX)) {
+        fclose($fp);
+        return ['success' => false, 'error' => 'Unable to lock messages file'];
+    }
+
+    $newId = 1;
+    $lastLine = getLastJsonLine($fp);
+    if ($lastLine !== null) {
+        $lastMessage = json_decode($lastLine, true);
+        if (is_array($lastMessage) && isset($lastMessage['id'])) {
+            $newId = $lastMessage['id'] + 1;
+        }
+    }
+
+    $newMessage = [
+        'id' => $newId,
+        'user' => $user,
+        'message' => $message,
+        'type' => $type,
+        'timestamp' => time()
+    ];
+
+    if ($mimeType) {
+        $newMessage['mimeType'] = $mimeType;
+    }
+
+    $line = json_encode($newMessage) . "\n";
+
+    fseek($fp, 0, SEEK_END);
+    $bytesWritten = fwrite($fp, $line);
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+
+    if ($bytesWritten !== strlen($line)) {
+        return ['success' => false, 'error' => 'Failed to write message'];
+    }
+
+    return ['success' => true, 'id' => $newId];
 }
 
 function addSystemMessage($message) {
-    safeAddMessage('Sistema', $message, 'system');
+    appendMessage('Sistema', $message, 'system');
 }
 
 
@@ -330,7 +383,7 @@ switch ($action) {
                     // Load current messages and keep only the first 2 (welcome messages)
                     $currentMessages = loadMessages();
                     $welcomeMessages = array_slice($currentMessages, 0, 2);
-                    saveMessages($welcomeMessages);
+                    writeAllMessages($welcomeMessages);
                     array_map('unlink', glob($audioDirectory . "*"));
                     array_map('unlink', glob($uploadDirectory . "*"));
                     addSystemMessage("The chat was deleted by $user");
@@ -344,7 +397,7 @@ switch ($action) {
                     echo json_encode(['error' => 'Invalid message format']);
                     break;
                 }
-                $result = safeAddMessage($user, $message, 'text');
+                $result = appendMessage($user, $message, 'text');
                 echo json_encode($result);
             }
         } else {
@@ -366,7 +419,7 @@ switch ($action) {
         if ($user && $encryptedContent && $encryptedMeta && $audioFileName) {
             $filePath = $audioDirectory . $audioFileName;
             if (file_put_contents($filePath, $encryptedContent) !== false) {
-                $result = safeAddMessage($user, $encryptedMeta, 'audio');
+                $result = appendMessage($user, $encryptedMeta, 'audio');
                 echo json_encode($result);
             } else {
                 echo json_encode(['error' => 'Failed to save audio']);
@@ -418,7 +471,7 @@ switch ($action) {
                 $isImage = strpos($mimeType, 'image') === 0;
                 $isVideo = strpos($mimeType, 'video') === 0;
                 $type = $isImage ? 'image' : ($isVideo ? 'video' : 'file');
-                $result = safeAddMessage($user, $encryptedMeta, $type, $mimeType);
+                $result = appendMessage($user, $encryptedMeta, $type, $mimeType);
                 echo json_encode($result['success'] ? ['success' => true] : ['error' => 'Failed to save file message']);
             } else {
                 echo json_encode(['error' => 'Failed to save file']);
