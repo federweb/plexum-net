@@ -21,7 +21,12 @@ if (session_status() === PHP_SESSION_NONE) {
 // ── Config ──────────────────────────────────────────────
 define('SITE_NAME', 'NodePulse Blog');
 define('SITE_DESC', 'Decentralized thoughts');
-define('DATA_DIR', __DIR__ . '/data');
+// Data lives OUTSIDE the webroot (~/.nodepulse/blog/data), same pattern as
+// av_stream/. Unlike sibling apps this folder shipped with no .htaccess at
+// all, so posts.json (including unpublished drafts) and comments.json were
+// directly fetchable over plain HTTP on the nginx/lighttpd stacks this
+// project deploys. UPLOAD_DIR stays public — images must stay web-servable.
+define('DATA_DIR', $npHome . '/.nodepulse/blog/data');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('PER_PAGE', 10);
 define('MAX_UPLOAD', 2 * 1024 * 1024);

@@ -13,6 +13,8 @@
  *   GET  /domainseed/?action=download  — Serve ZIP file
  */
 
+require_once __DIR__ . '/../auth_gate.php';
+
 // ============================================================
 // CONFIGURATION
 // ============================================================
@@ -435,20 +437,85 @@ function np_ds_cleanup_tmp($dir, $max_age) {
 // ============================================================
 
 /**
+ * Resolve a hostname to its IPv4 address (or return it directly if it's
+ * already a literal IP). Returns null if resolution fails.
+ */
+function np_ds_resolve_host($host) {
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        return $host;
+    }
+    $ips = gethostbynamel($host);
+    if (is_array($ips) && !empty($ips)) {
+        return $ips[0];
+    }
+    return null;
+}
+
+/**
+ * True if $ip is a public address — i.e. NOT loopback/private/link-local/
+ * reserved. Used to block SSRF into internal services (e.g. PulseTerminal
+ * on 127.0.0.1:7681, php-cgi on 127.0.0.1:9000) via a crafted domain_url.
+ */
+function np_ds_ip_is_public($ip) {
+    $flags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+    return filter_var($ip, FILTER_VALIDATE_IP, $flags) !== false;
+}
+
+/**
+ * Validate a domain_url before the server is allowed to fetch it: must be
+ * https://, reasonably long, and resolve to a public IP. Returns the
+ * resolved IP on success (also used to pin the later curl request against
+ * DNS-rebinding), or null on failure (with $error set).
+ */
+function np_ds_validate_fetchable_domain_url($domain_url, &$error) {
+    if (empty($domain_url)) {
+        $error = 'Domain URL is required';
+        return null;
+    }
+    if (strpos($domain_url, 'https://') !== 0) {
+        $error = 'URL must start with https://';
+        return null;
+    }
+    if (strlen($domain_url) < 15) {
+        $error = 'URL is too short';
+        return null;
+    }
+    $host = parse_url($domain_url, PHP_URL_HOST);
+    if (empty($host)) {
+        $error = 'Invalid URL';
+        return null;
+    }
+    $ip = np_ds_resolve_host($host);
+    if ($ip === null) {
+        $error = 'Cannot resolve host';
+        return null;
+    }
+    if (!np_ds_ip_is_public($ip)) {
+        $error = 'URL host is not allowed';
+        return null;
+    }
+    return $ip;
+}
+
+/**
  * Verify remote deployment and trigger first self-announce.
  * POST domain_url => calls remote index.php?check=announce
  */
 function np_ds_handle_verify() {
     $domain_url = isset($_POST['domain_url']) ? trim($_POST['domain_url']) : '';
-    if (empty($domain_url)) {
-        echo json_encode(array('ok' => false, 'message' => 'Domain URL is required'));
+
+    $error = null;
+    $ip = np_ds_validate_fetchable_domain_url($domain_url, $error);
+    if ($ip === null) {
+        echo json_encode(array('ok' => false, 'message' => $error));
         return;
     }
     $domain_url = rtrim($domain_url, '/');
+    $host = parse_url($domain_url, PHP_URL_HOST);
 
     // Step 1: call remote health check + announce
     $check_url = $domain_url . '/index.php?check=announce';
-    $result = np_ds_http_get($check_url, 30);
+    $result = np_ds_http_get($check_url, 30, $host, $ip);
 
     if ($result === null) {
         echo json_encode(array(
@@ -474,19 +541,32 @@ function np_ds_handle_verify() {
 /**
  * HTTP GET using curl or file_get_contents.
  *
- * @param string $url     Target URL
- * @param int    $timeout Seconds
+ * @param string      $url     Target URL (host must already be validated as public)
+ * @param int         $timeout Seconds
+ * @param string|null $host    Hostname from $url, used to pin $ip via CURLOPT_RESOLVE
+ * @param string|null $ip      Pre-resolved, pre-validated public IP for $host
  * @return string|null    Response body, or null on failure
  */
-function np_ds_http_get($url, $timeout) {
+function np_ds_http_get($url, $timeout, $host = null, $ip = null) {
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        // No redirects: a malicious remote could otherwise 302 this request
+        // to an internal/loopback URL, bypassing the public-IP check below.
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_USERAGENT, 'NodePulse-DomainSeed/1.0');
+        if (defined('CURLOPT_PROTOCOLS')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        }
+        // Pin the DNS name to the IP validated by the caller, so the
+        // connection can't be re-resolved to a different (private) address
+        // between validation and fetch (DNS rebinding).
+        if ($host !== null && $ip !== null && defined('CURLOPT_RESOLVE')) {
+            curl_setopt($ch, CURLOPT_RESOLVE, array($host . ':443:' . $ip));
+        }
         $result = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if (PHP_VERSION_ID < 80000) {

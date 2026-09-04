@@ -10,6 +10,21 @@
 
 $config = require __DIR__ . '/config.php';
 
+/* Data dir lives OUTSIDE the webroot (~/.nodepulse/pinboard/data), same
+ * pattern as av_stream/. The .htaccess previously relied upon here is an
+ * Apache-only directive and is silently ignored by the nginx/lighttpd
+ * servers this project actually deploys — a static GET of .secret_key or
+ * pins.json would otherwise leak the AES key and encrypted pin blobs,
+ * defeating the "encrypted at rest" design entirely. */
+if (PHP_OS_FAMILY !== 'Windows') {
+    $pbHome = getenv('HOME') ?: '/data/data/com.termux/files/home';
+} else {
+    $pbHome = str_replace('\\', '/', (getenv('HOME') ?: getenv('USERPROFILE') ?: dirname(__DIR__)));
+}
+define('PB_DATA_DIR', $pbHome . '/.nodepulse/pinboard/data');
+define('PB_RATELIMIT_DIR', PB_DATA_DIR . '/ratelimit');
+define('PB_SECRET_FILE', PB_DATA_DIR . '/.secret_key');
+
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
@@ -41,9 +56,9 @@ class Crypto {
     public static function getSecretKey() {
         if (self::$secret !== null) return self::$secret;
 
-        $file = __DIR__ . '/data/.secret_key';
-        if (!is_dir(__DIR__ . '/data')) {
-            mkdir(__DIR__ . '/data', 0700, true);
+        $file = PB_SECRET_FILE;
+        if (!is_dir(PB_DATA_DIR)) {
+            mkdir(PB_DATA_DIR, 0700, true);
         }
 
         if (file_exists($file)) {
@@ -90,7 +105,7 @@ class RateLimiter {
     private $perHour;
 
     public function __construct($config) {
-        $this->dir     = __DIR__ . '/data/ratelimit/';
+        $this->dir     = PB_RATELIMIT_DIR . '/';
         $this->perMin  = $config['rate_limit']['max_requests_per_minute'];
         $this->perHour = $config['rate_limit']['max_requests_per_hour'];
         if (!is_dir($this->dir)) mkdir($this->dir, 0700, true);
@@ -129,7 +144,7 @@ class PinStore {
     private $lockFile;
 
     public function __construct() {
-        $dir = __DIR__ . '/data/';
+        $dir = PB_DATA_DIR . '/';
         if (!is_dir($dir)) mkdir($dir, 0700, true);
         $this->file     = $dir . 'pins.json';
         $this->lockFile = $dir . '.pins.lock';

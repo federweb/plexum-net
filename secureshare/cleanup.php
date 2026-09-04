@@ -8,13 +8,21 @@
 // Include configuration
 $config = include 'config.php';
 
+// Same out-of-webroot location used by api.php (~/.nodepulse/secureshare/data)
+if (PHP_OS_FAMILY !== 'Windows') {
+    $ssHome = getenv('HOME') ?: '/data/data/com.termux/files/home';
+} else {
+    $ssHome = str_replace('\\', '/', (getenv('HOME') ?: getenv('USERPROFILE') ?: dirname(__DIR__)));
+}
+define('SS_DATA_DIR', $ssHome . '/.nodepulse/secureshare/data');
+
 class CleanupManager {
     private $dataDir;
     private $lockDir;
-    
+
     public function __construct() {
-        $this->dataDir = __DIR__ . '/data/';
-        $this->lockDir = __DIR__ . '/data/locks/';
+        $this->dataDir = SS_DATA_DIR . '/';
+        $this->lockDir = SS_DATA_DIR . '/locks/';
     }
     
     public function runCleanup() {

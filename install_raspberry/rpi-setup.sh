@@ -432,7 +432,9 @@ const { PeerServer } = require('peer');
 const port = process.env.PEER_PORT ? parseInt(process.env.PEER_PORT) : 9001;
 const path = process.env.PEER_PATH || '/peerjs';
 
-const server = PeerServer({ port, path });
+// Loopback-only, like every other backend service in this stack — nginx is
+// the only front door. Without this, PeerServer defaults to 0.0.0.0.
+const server = PeerServer({ port, path, host: '127.0.0.1' });
 
 server.on('connection', (client) => {
   console.log(`[peerjs] connected: ${client.getId()}`);

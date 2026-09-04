@@ -2,6 +2,22 @@
 // Load configuration
 $config = require __DIR__ . '/config.php';
 
+/* Data dir lives OUTSIDE the webroot (~/.nodepulse/secureshare/data), same
+ * pattern as av_stream/. The .htaccess previously relied upon here is an
+ * Apache-only directive and is silently ignored by the nginx/lighttpd
+ * servers this project actually deploys — a static GET of .secret_key or
+ * <shareId>.json would otherwise leak the AES key and raw ciphertext,
+ * bypassing the view-limit/expiry logic entirely. */
+if (PHP_OS_FAMILY !== 'Windows') {
+    $ssHome = getenv('HOME') ?: '/data/data/com.termux/files/home';
+} else {
+    $ssHome = str_replace('\\', '/', (getenv('HOME') ?: getenv('USERPROFILE') ?: dirname(__DIR__)));
+}
+define('SS_DATA_DIR', $ssHome . '/.nodepulse/secureshare/data');
+define('SS_LOCK_DIR', SS_DATA_DIR . '/locks');
+define('SS_RATELIMIT_DIR', SS_DATA_DIR . '/ratelimit');
+define('SS_SECRET_FILE', SS_DATA_DIR . '/.secret_key');
+
 // Security headers
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
@@ -48,7 +64,10 @@ class SecurityUtils {
             return self::$secretKey;
         }
 
-        $secretFile = __DIR__ . '/data/.secret_key';
+        $secretFile = SS_SECRET_FILE;
+        if (!is_dir(SS_DATA_DIR)) {
+            mkdir(SS_DATA_DIR, 0700, true);
+        }
 
         if (file_exists($secretFile)) {
             self::$secretKey = trim(file_get_contents($secretFile));
@@ -99,7 +118,7 @@ class RateLimiter {
     private $maxPerHour;
 
     public function __construct($config) {
-        $this->dir = __DIR__ . '/data/ratelimit/';
+        $this->dir = SS_RATELIMIT_DIR . '/';
         $this->maxPerMinute = $config['rate_limit']['max_requests_per_minute'];
         $this->maxPerHour = $config['rate_limit']['max_requests_per_hour'];
 
@@ -156,8 +175,8 @@ class DataStorage {
     private $lockDir;
 
     public function __construct() {
-        $this->dataDir = __DIR__ . '/data/';
-        $this->lockDir = __DIR__ . '/data/locks/';
+        $this->dataDir = SS_DATA_DIR . '/';
+        $this->lockDir = SS_LOCK_DIR . '/';
 
         if (!file_exists($this->dataDir)) {
             mkdir($this->dataDir, 0700, true);
