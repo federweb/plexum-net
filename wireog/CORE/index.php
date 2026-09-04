@@ -258,11 +258,62 @@
                     padding: CryptoJS.pad.Pkcs7
                 });
 
-                return decrypted.toString(CryptoJS.enc.Utf8);
+                const result = decrypted.toString(CryptoJS.enc.Utf8);
+                if (!result) {
+                    throw new Error('Empty plaintext');
+                }
+                return result;
             } catch (error) {
                 console.error('Decryption error:', error);
-                return encryptedMessage;
+                return null;
             }
+        }
+
+        const RICH_TEXT_ALLOWED_TAGS = new Set(['H2', 'P', 'STRONG', 'CODE']);
+        const RICH_TEXT_ALLOWED_STYLE_DECL = /^(color|font-family|font-size|margin-top)\s*:\s*[#a-zA-Z0-9 ,.\-]+$/;
+
+        // Only for the server-guaranteed 'admin' welcome message (sendMessage now
+        // rejects that username for anyone else). Strips any tag not in the
+        // allowlist, keeping its text, like PHP's strip_tags. Unlike strip_tags,
+        // also strips every attribute except a whitelisted-safe 'style' subset,
+        // since an allowed tag with an arbitrary attribute (onerror=, style with
+        // url(...), ...) would still be a script/exfiltration vector.
+        function sanitizeRichText(html) {
+            const template = document.createElement('template');
+            template.innerHTML = html;
+
+            function sanitize(parent) {
+                Array.from(parent.childNodes).forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (!RICH_TEXT_ALLOWED_TAGS.has(node.tagName)) {
+                            parent.replaceChild(document.createTextNode(node.textContent), node);
+                            return;
+                        }
+                        Array.from(node.attributes).forEach(attr => {
+                            if (attr.name !== 'style') {
+                                node.removeAttribute(attr.name);
+                            }
+                        });
+                        const style = node.getAttribute('style');
+                        if (style) {
+                            const safeDecls = style.split(';')
+                                .map(s => s.trim())
+                                .filter(decl => decl && RICH_TEXT_ALLOWED_STYLE_DECL.test(decl));
+                            if (safeDecls.length) {
+                                node.setAttribute('style', safeDecls.join('; '));
+                            } else {
+                                node.removeAttribute('style');
+                            }
+                        }
+                        sanitize(node);
+                    } else if (node.nodeType !== Node.TEXT_NODE) {
+                        parent.removeChild(node);
+                    }
+                });
+            }
+
+            sanitize(template.content);
+            return template.content;
         }
 
         function wordArrayToUint8Array(wordArray) {
@@ -597,7 +648,17 @@
                                     const textSpan = document.createElement('span');
                                     textSpan.className = 'text';
                                     const decryptedMessage = decryptMessage(msg.message, msg.user, passwordHash);
-                                    textSpan.innerHTML = decryptedMessage.replace(/\n/g, '<br>');
+                                    if (decryptedMessage === null) {
+                                        textSpan.textContent = '[Unable to decrypt message]';
+                                    } else if (msg.user === 'admin') {
+                                        textSpan.appendChild(sanitizeRichText(decryptedMessage));
+                                    } else {
+                                        const lines = decryptedMessage.split('\n');
+                                        lines.forEach((line, i) => {
+                                            if (i > 0) textSpan.appendChild(document.createElement('br'));
+                                            textSpan.appendChild(document.createTextNode(line));
+                                        });
+                                    }
                                     messageElement.appendChild(textSpan);
                                     break;
                                 }

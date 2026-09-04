@@ -315,6 +315,10 @@ switch ($action) {
             : ($_SESSION['owned_rooms'][$roomId] ?? '');
 
         if ($user && $message) {
+            if (in_array(strtolower($user), ['admin', 'system'], true)) {
+                echo json_encode(['error' => 'Invalid user']);
+                break;
+            }
             if ($command === 'deleteall') {
                 if (!verifyRoomOwnership($roomId, $sessionPwd)) {
                     echo json_encode(['error' => 'Only the room creator can use /deleteall']);
@@ -336,6 +340,10 @@ switch ($action) {
                 }
                 echo json_encode(['success' => true, 'action' => 'cleared']);
             } else {
+                if (!isValidCiphertext($message)) {
+                    echo json_encode(['error' => 'Invalid message format']);
+                    break;
+                }
                 $result = safeAddMessage($user, $message, 'text');
                 echo json_encode($result);
             }

@@ -88,6 +88,19 @@ function checkRateLimit() {
 }
 
 function createRoom(string $sessionPwd, array $messages): array {
+    if (!preg_match('/^[0-9a-f]{32}$/', $sessionPwd)) {
+        return ['success' => false, 'error' => 'Invalid session token'];
+    }
+
+    if (count($messages) !== 2) {
+        return ['success' => false, 'error' => 'Invalid messages payload'];
+    }
+
+    $welcomeCiphertext = $messages[1]['message'] ?? '';
+    if (!isValidCiphertext($welcomeCiphertext)) {
+        return ['success' => false, 'error' => 'Invalid welcome message format'];
+    }
+
     if (!checkRateLimit()) {
         return ['success' => false, 'error' => 'exceed limit creation rooms'];
     }
@@ -117,7 +130,11 @@ function createRoom(string $sessionPwd, array $messages): array {
         $zip->close();
         unlink($destination);
 
-        file_put_contents("$folderPath/messages.json", json_encode($messages, JSON_PRETTY_PRINT));
+        $sanitizedMessages = [
+            ['id' => 1, 'user' => 'System', 'message' => 'admin has joined the room', 'type' => 'system'],
+            ['id' => 2, 'user' => 'admin', 'message' => $welcomeCiphertext, 'type' => 'text', 'timestamp' => time()],
+        ];
+        file_put_contents("$folderPath/messages.json", json_encode($sanitizedMessages, JSON_PRETTY_PRINT));
 
     } else {
         return ['success' => false, 'error' => 'Error extract zip file'];
@@ -131,7 +148,7 @@ function createRoom(string $sessionPwd, array $messages): array {
 
 $inputData = json_decode(file_get_contents('php://input'), true);
 
-if (!$inputData || !isset($inputData['sessionPwd']) || !isset($inputData['messages']) || !is_array($inputData['messages'])) {
+if (!$inputData || !isset($inputData['sessionPwd']) || !is_string($inputData['sessionPwd']) || !isset($inputData['messages']) || !is_array($inputData['messages'])) {
     echo json_encode(['success' => false, 'error' => 'Invalid request data']);
     exit;
 }
