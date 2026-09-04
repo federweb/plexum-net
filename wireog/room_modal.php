@@ -254,7 +254,7 @@
     }
 
     function deriveRoomId(sessionPwd) {
-        return CryptoJS.SHA256(sessionPwd).toString().substring(0, 8);
+        return CryptoJS.SHA256(sessionPwd).toString().substring(0, 24);
     }
 
     function generateUserKey(username, roomId, password = '') {
@@ -341,7 +341,9 @@
                 loadModalRooms();
                 alert('Room created successfully! ID: ' + data.roomId);
             } else {
-                alert('Error creating room. ' + (data.error || 'You can create a maximum of 2 rooms per hour and 5 rooms per day.'));
+                // Room-creation rate limiting was disabled server-side (see create_room.php),
+                // so the old "max N rooms per hour/day" hint no longer applies.
+                alert('Error creating room. ' + (data.error || 'Unknown error.'));
             }
         } catch (error) {
             btn.disabled = false;
@@ -393,7 +395,7 @@
 
         try {
             const decodedPwd = decodeRoomPwd(trimmedKey);
-            const derivedRoomId = CryptoJS.SHA256(decodedPwd).toString().substring(0, 8);
+            const derivedRoomId = CryptoJS.SHA256(decodedPwd).toString().substring(0, 24);
 
             if (derivedRoomId !== roomId) {
                 alert('Invalid key: this key does not match the selected room.');

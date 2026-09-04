@@ -16,7 +16,7 @@ function deleteDirectory(string $path): bool {
 $inputData = json_decode(file_get_contents('php://input'), true);
 $roomId    = $inputData['roomId'] ?? '';
 
-if (!preg_match('/^[0-9a-f]{8}$/', $roomId)) {
+if (!preg_match('/^[0-9a-f]{24}$/', $roomId)) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }

@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/room_auth.php';
 
 function getUserInfo() {
+    /*
     $userAgent = $_SERVER['HTTP_USER_AGENT'];
     $browser = 'Unknown';
     $os = 'Unknown';
@@ -30,10 +31,14 @@ function getUserInfo() {
     }
 
     return ['browser' => $browser, 'os' => $os];
+    */
+    // Privacy: browser/OS fingerprinting disabled.
+    return ['browser' => 'Unknown', 'os' => 'Unknown'];
 }
 
 
 function logRoomCreation($roomId) {
+    /*
     $logFile = __DIR__ . '/json/log_room.json';
     $userInfo = getUserInfo();
     $logEntry = [
@@ -52,9 +57,12 @@ function logRoomCreation($roomId) {
 
     $logData[] = $logEntry;
     file_put_contents($logFile, json_encode($logData, JSON_PRETTY_PRINT));
+    */
+    // Privacy: IP/browser/OS logging to log_room.json disabled.
 }
 
 function checkRateLimit() {
+    /*
     $rateFile = __DIR__ . '/json/rate_limit.json';
     $ip = $_SERVER['REMOTE_ADDR'];
     $currentTime = time();
@@ -85,6 +93,11 @@ function checkRateLimit() {
 
     file_put_contents($rateFile, json_encode($rateData));
     return true;
+    */
+    // Privacy/infra: per-IP rate limiting to rate_limit.json disabled
+    // (REMOTE_ADDR is also always 127.0.0.1 behind the cloudflared
+    // tunnel, which made this count every visitor as the same IP).
+    return true;
 }
 
 function createRoom(string $sessionPwd, array $messages): array {
@@ -101,11 +114,12 @@ function createRoom(string $sessionPwd, array $messages): array {
         return ['success' => false, 'error' => 'Invalid welcome message format'];
     }
 
-    if (!checkRateLimit()) {
-        return ['success' => false, 'error' => 'exceed limit creation rooms'];
-    }
+    // Rate limiting disabled (see checkRateLimit()) — this gate never triggers now.
+    // if (!checkRateLimit()) {
+    //     return ['success' => false, 'error' => 'exceed limit creation rooms'];
+    // }
 
-    $roomId = substr(hash('sha256', $sessionPwd), 0, 8);
+    $roomId = substr(hash('sha256', $sessionPwd), 0, 24);
 
     $folderPath = __DIR__ . "/rooms/$roomId";
 
