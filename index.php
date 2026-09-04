@@ -406,7 +406,7 @@ if ($np_node_id && file_exists($np_directory_file)) {
             <div class="card-icon" style="font-family:monospace;font-size:20px;font-weight:700">&gt;_</div>
             <div>
                 <div class="card-title">Shell</div>
-                <div class="card-desc">Run commands, manage processes, and monitor your Termux environment in real-time through a sleek web interface.</div>
+                <div class="card-desc">Full shell access over an encrypted tunnel inside HTTPS. Real PTY, multiple concurrent sessions, persistent via tmux.</div>
             </div>
             <div class="card-arrow">Open &rarr;</div>
         </a>
