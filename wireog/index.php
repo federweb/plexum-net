@@ -89,7 +89,7 @@ $modalContent = str_replace("fetch('../../create_room.php'", "fetch('create_room
             </div>
             <div class="footer-section">
                 <h4>Copyright Notice</h4>
-                <p>© 2026 WireOG. All rights reserved. The WireOG software is open source and released under the MIT
+                <p>The WireOG software is open source and released under the MIT
                     License. You are free to use, modify, and distribute the code, subject to the license terms. The
                     WireOG name, logo, and website content are proprietary and may not be used without express
                     permission.</p>

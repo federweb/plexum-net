@@ -261,44 +261,44 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 switch ($action) {
     case 'addUser':
-        $user = $_POST['user'] ?? '';
-        $user = trim($user);
-        $user = preg_replace('/[\x00-\x1F\x7F<>&\/\\\\]/', '', $user);
-        $user = Normalizer::normalize($user, Normalizer::FORM_C);
-        $user = mb_substr($user, 0, 50, 'UTF-8');
+        $user = trim($_POST['user'] ?? '');
 
-        if (!empty($user)) {
-
-            if (strtolower($user) === 'admin' || strtolower($user) === 'system') {
-                echo json_encode(['error' => 'Username not allowed. Please choose a different name.']);
-                break;
-            }
-
-            $users = loadUsers();
-
-
-            if (isRoomBlocked()) {
-                echo json_encode(['error' => 'Room access is currently blocked. No new participants allowed.']);
-                break;
-            }
-
-            $baseUser = $user;
-            $suffix = 1;
-
-
-            while (in_array($user, $users)) {
-                $user = $baseUser . '_' . $suffix;
-                $suffix++;
-            }
-
-            $users[] = $user;
-            saveUsers($users);
-            addSystemMessage("$currentDate: $user has joined the room");
-
-            echo json_encode(['success' => true, 'user' => $user]);
-        } else {
-            echo json_encode(['error' => 'Not Valid: User name']);
+        // Same charset as the client-side check (validateUsername in
+        // CORE/index.php): plain ASCII letters/digits/underscore only.
+        // Rejecting anything else (instead of just stripping a few chars
+        // and normalizing Unicode) blocks homoglyph usernames — e.g. a
+        // Cyrillic "а" that visually impersonates "admin" without matching
+        // it exactly in the reserved-name check below.
+        if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $user)) {
+            echo json_encode(['error' => 'Username must contain only letters, numbers and underscore (min 3 max 20 characters).']);
+            break;
         }
+
+        if (strtolower($user) === 'admin' || strtolower($user) === 'system') {
+            echo json_encode(['error' => 'Username not allowed. Please choose a different name.']);
+            break;
+        }
+
+        $users = loadUsers();
+
+        if (isRoomBlocked()) {
+            echo json_encode(['error' => 'Room access is currently blocked. No new participants allowed.']);
+            break;
+        }
+
+        $baseUser = $user;
+        $suffix = 1;
+
+        while (in_array($user, $users)) {
+            $user = $baseUser . '_' . $suffix;
+            $suffix++;
+        }
+
+        $users[] = $user;
+        saveUsers($users);
+        addSystemMessage("$currentDate: $user has joined the room");
+
+        echo json_encode(['success' => true, 'user' => $user]);
         break;
 
     case 'getUsers':

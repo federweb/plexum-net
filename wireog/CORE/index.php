@@ -219,6 +219,22 @@
 
         let passwordHash = '';
 
+        // Explicit params instead of relying on the bundled crypto-js.min.js
+        // defaults: if that asset ever gets replaced with an older/different
+        // build, login must not silently fall back to a weak KDF (see
+        // CVE-2023-46233 — crypto-js < 4.2.0 defaulted PBKDF2 to SHA1 with
+        // a single iteration).
+        const PBKDF2_ITERATIONS = 350000;
+
+        function derivePasswordHash(password) {
+            if (!password) return '';
+            return CryptoJS.PBKDF2(password, roomId, {
+                keySize: 8,
+                iterations: PBKDF2_ITERATIONS,
+                hasher: CryptoJS.algo.SHA256
+            }).toString();
+        }
+
         function generateUserKey(username, passwordHash = '') {
             const pass = passwordHash || CryptoJS.SHA256('').toString();
             return CryptoJS.SHA256(roomId + pass + CryptoJS.SHA256(username).toString()).toString().substring(0, 32);
@@ -378,13 +394,12 @@
         }
         
 
-        async function verifyPassword(password) {
+        async function verifyPassword(pwdHash) {
             try {
                 const response = await fetch('chat.php?action=getMessages');
                 const messages = await response.json();
 
                 if (messages.length >= 2 && messages[1].user === 'admin') {
-                    const pwdHash = CryptoJS.SHA256(password).toString();
                     const decrypted = decryptMessage(messages[1].message, 'admin', pwdHash);
                     return decrypted.startsWith('<h2 style="color: #2c3e50; margin-top: 0;">Welcome to Your Secure Chat!</h2>');
                 }
@@ -404,14 +419,17 @@
                 return;
             }
 
+            // Derived once here (PBKDF2, ~1M iterations) and reused below,
+            // instead of recomputing it a second time inside verifyPassword.
+            const pwdHash = derivePasswordHash(password);
 
-            const passwordValid = await verifyPassword(password);
+            const passwordValid = await verifyPassword(pwdHash);
             if (!passwordValid) {
                 alert('Incorrect password! Access denied.');
                 return;
             }
 
-            passwordHash = CryptoJS.SHA256(password).toString();
+            passwordHash = pwdHash;
 
             if (username) {
                 addUser(username)
@@ -612,12 +630,7 @@
 
                     if (msg.type === 'system') {
                         messageElement.classList.add('system');
-                        if (msg.highlightedUser) {
-                            const parts = msg.message.split('%s');
-                            messageElement.innerHTML += parts[0] + '<b>' + msg.highlightedUser + '</b>' + parts[1];
-                        } else {
-                            messageElement.innerHTML += msg.message;
-                        }
+                        messageElement.innerHTML += msg.message;
                         shouldPlaySound = true;
 
                         const messageText = msg.message;

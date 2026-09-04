@@ -237,16 +237,6 @@
     });
 
 
-    function generateUniqueId(length = 6) {
-        const characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const charactersLength = characters.length;
-        let randomString = '';
-        for (let i = 0; i < length; i++) {
-            randomString += characters[Math.floor(Math.random() * charactersLength)];
-        }
-        return randomString;
-    }
-
     function generateSessionPwd() {
         const bytes = new Uint8Array(16);
         crypto.getRandomValues(bytes);
@@ -257,8 +247,22 @@
         return CryptoJS.SHA256(sessionPwd).toString().substring(0, 24);
     }
 
+    // Must match derivePasswordHash() in CORE/index.php exactly (same salt,
+    // same iterations) or a participant logging in later won't derive the
+    // same key and won't be able to decrypt this room's welcome message.
+    const PBKDF2_ITERATIONS = 350000;
+
+    function derivePasswordHash(password, roomId) {
+        if (!password) return CryptoJS.SHA256('').toString();
+        return CryptoJS.PBKDF2(password, roomId, {
+            keySize: 8,
+            iterations: PBKDF2_ITERATIONS,
+            hasher: CryptoJS.algo.SHA256
+        }).toString();
+    }
+
     function generateUserKey(username, roomId, password = '') {
-        const passwordHash = CryptoJS.SHA256(password).toString();
+        const passwordHash = derivePasswordHash(password, roomId);
         return CryptoJS.SHA256(roomId + passwordHash + CryptoJS.SHA256(username).toString()).toString().substring(0, 32);
     }
 
