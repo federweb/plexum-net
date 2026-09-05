@@ -197,6 +197,7 @@
     
     <script>
         let currentUser = '';
+        let userToken = '';
         let lastMessageId = 0;
         let isRecording = false;
         let recorder;
@@ -238,6 +239,16 @@
         function generateUserKey(username, passwordHash = '') {
             const pass = passwordHash || CryptoJS.SHA256('').toString();
             return CryptoJS.SHA256(roomId + pass + CryptoJS.SHA256(username).toString()).toString().substring(0, 32);
+        }
+
+        // Same entropy/encoding as generateSessionPwd() in room_modal.php,
+        // but this token is unrelated to room ownership: it's a bearer
+        // credential the server binds to a username at addUser time, so
+        // chat.php can stop trusting a client-supplied user= field.
+        function generateUserToken() {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
         function encryptMessage(message, username, password = '') {
@@ -410,6 +421,58 @@
             }
         }
 
+        function sessionStorageKey() {
+            return 'wireog_session_' + roomId;
+        }
+
+        function handleSessionExpired() {
+            sessionStorage.removeItem(sessionStorageKey());
+            alert('Your session has expired. Please log in again.');
+            location.reload();
+        }
+
+        // Restores a cached login (username + already-derived passwordHash
+        // + userToken) after a same-tab refresh, skipping both prompt()s.
+        // Deliberately does NOT re-run verifyPassword(): a valid userToken
+        // can only exist because a prior login() already passed that
+        // check, and addUser's reconnect branch re-validates the token
+        // server-side anyway -- a stronger signal than re-decrypting the
+        // welcome message a second time against the same cached hash.
+        function reconnect(saved) {
+            currentUser = saved.username;
+            passwordHash = saved.passwordHash;
+            userToken = saved.userToken;
+
+            return addUser(currentUser)
+                .then(() => {
+                    document.getElementById('login').style.display = 'none';
+                    document.getElementById('chat-container').style.display = 'flex';
+                    getMessages();
+                    checkRoomAccess();
+                    applyRoomOwnershipUI();
+                    setInterval(getMessages, 2000);
+                    setInterval(getUsers, 5000);
+                    setInterval(checkRoomAccess, 10000);
+                })
+                .catch(error => {
+                    sessionStorage.removeItem(sessionStorageKey());
+                    console.warn('Reconnect failed, falling back to manual login:', error.message);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const saved = sessionStorage.getItem(sessionStorageKey());
+            if (!saved) return;
+            try {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.username && parsed.userToken) {
+                    reconnect(parsed);
+                }
+            } catch (e) {
+                // Corrupt cache entry -- ignore, fall back to manual login.
+            }
+        });
+
         async function login() {
             const username = document.getElementById('username').value.trim();
             const password = prompt('Enter room password (leave empty if none):') || '';
@@ -430,14 +493,21 @@
             }
 
             passwordHash = pwdHash;
+            userToken = generateUserToken();
 
             if (username) {
                 addUser(username)
                     .then(() => {
+                        sessionStorage.setItem(sessionStorageKey(), JSON.stringify({
+                            username: currentUser,
+                            passwordHash: passwordHash,
+                            userToken: userToken
+                        }));
                         document.getElementById('login').style.display = 'none';
                         document.getElementById('chat-container').style.display = 'flex';
                         getMessages();
                         checkRoomAccess();
+                        applyRoomOwnershipUI();
                         setInterval(getMessages, 2000);
                         setInterval(getUsers, 5000);
                         setInterval(checkRoomAccess, 10000);
@@ -455,7 +525,7 @@
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `user=${encodeURIComponent(user)}`
+                body: `user=${encodeURIComponent(user)}&userToken=${encodeURIComponent(userToken)}`
             })
                 .then(response => response.json())
                 .then(data => {
@@ -517,6 +587,15 @@
             return (room && room.sessionPwd) ? room.sessionPwd : '';
         }
 
+        // The room-lock toggle is only ever honored server-side for the
+        // room creator (see verifyRoomOwnership in chat.php); disabling it
+        // here just keeps non-owners from getting a silent rejection.
+        function applyRoomOwnershipUI() {
+            const isOwner = !!getSessionPwd();
+            preventAccessSwitch.disabled = !isOwner;
+            preventAccessSwitch.title = isOwner ? '' : 'Only the room creator can lock/unlock this room';
+        }
+
         function sendMessage() {
             const messageInput = document.getElementById('message');
             const message = messageInput.value;
@@ -525,7 +604,7 @@
 
                 const encryptedMessage = encryptMessage(message, currentUser, passwordHash);
 
-                let body = `user=${encodeURIComponent(currentUser)}&message=${encodeURIComponent(encryptedMessage)}`;
+                let body = `userToken=${encodeURIComponent(userToken)}&message=${encodeURIComponent(encryptedMessage)}`;
                 if (isDeleteAll) {
                     body += '&command=deleteall';
                     const sessionPwd = getSessionPwd();
@@ -543,6 +622,10 @@
                 })
                     .then(response => response.json())
                     .then(data => {
+                        if (data.code === 'session_expired') {
+                            handleSessionExpired();
+                            return;
+                        }
                         if (data.error && isDeleteAll) {
                             alert(data.error);
                             return;
@@ -867,7 +950,7 @@
                 formData.append('encryptedAudio', encryptedContent);
                 formData.append('audioFileName', audioFileName);
                 formData.append('encryptedMeta', encryptedMeta);
-                formData.append('user', currentUser);
+                formData.append('userToken', userToken);
                 formData.append('action', 'sendAudioMessage');
 
                 const xhr = new XMLHttpRequest();
@@ -884,7 +967,9 @@
                     document.getElementById('upload-progress').style.display = 'none';
                     if (xhr.status === 200) {
                         const data = JSON.parse(xhr.responseText);
-                        if (data.success) {
+                        if (data.code === 'session_expired') {
+                            handleSessionExpired();
+                        } else if (data.success) {
                             document.getElementById('message-sound').play().catch(() => {});
                         } else {
                             console.error('Audio send error:', data.error);
@@ -936,7 +1021,7 @@
                 formData.append('uploadFileName', uploadFileName);
                 formData.append('encryptedMeta', encryptedFileMeta);
                 formData.append('mimeType', file.type || 'application/octet-stream');
-                formData.append('user', currentUser);
+                formData.append('userToken', userToken);
                 formData.append('action', 'sendFile');
 
                 const xhr = new XMLHttpRequest();
@@ -953,7 +1038,9 @@
                     document.getElementById('upload-progress').style.display = 'none';
                     if (xhr.status === 200) {
                         const response = JSON.parse(xhr.responseText);
-                        if (response.success) {
+                        if (response.code === 'session_expired') {
+                            handleSessionExpired();
+                        } else if (response.success) {
                             document.getElementById('message-sound').play().catch(e => console.log('Error in sound playback:', e));
                         } else {
                             console.error('Error uploading the file:', response.error);
@@ -1020,18 +1107,26 @@
 
         preventAccessSwitch.addEventListener('change', function () {
             const isBlocked = this.checked;
+            let body = `user=${encodeURIComponent(currentUser)}&blocked=${isBlocked}`;
+            const sessionPwd = getSessionPwd();
+            if (sessionPwd) {
+                body += '&sessionPwd=' + encodeURIComponent(sessionPwd);
+            }
             fetch('chat.php?action=setRoomAccess', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `user=${encodeURIComponent(currentUser)}&blocked=${isBlocked}`
+                body: body
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     console.log('Room access status updated:', isBlocked);
                 } else {
+                    if (data.error) {
+                        alert(data.error);
+                    }
                     console.error('Failed to update room access status');
                     this.checked = !isBlocked;
                 }
@@ -1053,10 +1148,10 @@
         });
 
         function handleUserLeaving() {
-            if (currentUser) {
+            if (currentUser && userToken) {
                 navigator.sendBeacon('chat.php', new URLSearchParams({
                     action: 'removeUser',
-                    user: currentUser
+                    userToken: userToken
                 }));
             }
         }

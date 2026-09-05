@@ -309,12 +309,85 @@ function addSystemMessage($message) {
     appendMessage('Sistema', $message, 'system');
 }
 
+// Lazy TTL prune (no cron), called once per addUser. Removes session
+// tokens idle >24h from sessions.json, and cross-removes the same
+// usernames from users.json -- otherwise a tab that outlives its token
+// without ever firing beforeunload/pagehide (crash, OS-suspended mobile
+// tab) leaves a permanent ghost entry in users.json, since a later
+// removeUser beacon for that already-expired token can no longer
+// resolve to a username. Skips a username still bound to another,
+// non-expired session (same identity open in a second tab).
+function pruneExpiredSessions($ttlSeconds = 86400) {
+    global $currentDate;
+
+    $sessions = loadSessions();
+    $cutoff = time() - $ttlSeconds;
+    $expiredUsers = [];
+    $kept = [];
+
+    foreach ($sessions as $hash => $s) {
+        if (($s['lastSeen'] ?? 0) < $cutoff) {
+            $expiredUsers[] = $s['user'];
+        } else {
+            $kept[$hash] = $s;
+        }
+    }
+
+    if (count($kept) !== count($sessions)) {
+        saveSessions($kept);
+    }
+
+    if (!empty($expiredUsers)) {
+        $stillActive = array_column($kept, 'user');
+        $toRemove = array_diff(array_unique($expiredUsers), $stillActive);
+        if (!empty($toRemove)) {
+            $users = array_values(array_diff(loadUsers(), $toRemove));
+            saveUsers($users);
+            foreach ($toRemove as $u) {
+                addSystemMessage("$u has left the room");
+            }
+        }
+    }
+
+    return $kept;
+}
+
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 switch ($action) {
     case 'addUser':
         $user = trim($_POST['user'] ?? '');
+        $userToken = $_POST['userToken'] ?? '';
+
+        if (!preg_match('/^[0-9a-f]{32}$/', $userToken)) {
+            echo json_encode(['error' => 'Missing or invalid session token']);
+            break;
+        }
+
+        $sessions = pruneExpiredSessions();
+        $tokenHash = hash('sha256', $userToken);
+
+        // Reconnect: token already bound to an identity (page refresh,
+        // sessionStorage still holds it). The client-supplied $user is
+        // ignored -- the server's existing binding wins. Deliberately
+        // NOT gated by isRoomBlocked(): the lock is meant to stop new
+        // participants from joining, not to kick an already-admitted
+        // participant out just because they refreshed the tab.
+        if (isset($sessions[$tokenHash]['user'])) {
+            $boundUser = $sessions[$tokenHash]['user'];
+            $sessions[$tokenHash]['lastSeen'] = time();
+            saveSessions($sessions);
+
+            $users = loadUsers();
+            if (!in_array($boundUser, $users)) {
+                $users[] = $boundUser;
+                saveUsers($users);
+            }
+
+            echo json_encode(['success' => true, 'user' => $boundUser]);
+            break;
+        }
 
         // Same charset as the client-side check (validateUsername in
         // CORE/index.php): plain ASCII letters/digits/underscore only.
@@ -351,6 +424,9 @@ switch ($action) {
         saveUsers($users);
         addSystemMessage("$currentDate: $user has joined the room");
 
+        $sessions[$tokenHash] = ['user' => $user, 'lastSeen' => time()];
+        saveSessions($sessions);
+
         echo json_encode(['success' => true, 'user' => $user]);
         break;
 
@@ -359,13 +435,19 @@ switch ($action) {
         break;
 
     case 'sendMessage':
-        $user = $_POST['user'] ?? '';
+        $userToken = $_POST['userToken'] ?? '';
+        $user = resolveUserFromToken($userToken);
         $message = $_POST['message'] ?? '';
         $command = $_POST['command'] ?? '';
         $postSessionPwd = $_POST['sessionPwd'] ?? '';
         $sessionPwd = preg_match('/^[0-9a-f]{32}$/', $postSessionPwd)
             ? $postSessionPwd
             : ($_SESSION['owned_rooms'][$roomId] ?? '');
+
+        if (!$user) {
+            echo json_encode(['error' => 'Session expired, please log in again', 'code' => 'session_expired']);
+            break;
+        }
 
         if ($user && $message) {
             if (in_array(strtolower($user), ['admin', 'system'], true)) {
@@ -406,10 +488,16 @@ switch ($action) {
         break;
 
     case 'sendAudioMessage':
-        $user = $_POST['user'] ?? '';
+        $userToken = $_POST['userToken'] ?? '';
+        $user = resolveUserFromToken($userToken);
         $encryptedContent = $_POST['encryptedAudio'] ?? '';
         $encryptedMeta = $_POST['encryptedMeta'] ?? '';
         $audioFileName = preg_replace('/[^a-zA-Z0-9_\-.]/', '', basename($_POST['audioFileName'] ?? ''));
+
+        if (!$user) {
+            echo json_encode(['error' => 'Session expired, please log in again', 'code' => 'session_expired']);
+            break;
+        }
 
         if (!preg_match('/^[a-zA-Z0-9_\-]+\.enc$/', $audioFileName)) {
             echo json_encode(['error' => 'Invalid audio file name format']);
@@ -454,11 +542,17 @@ switch ($action) {
         break;
         
     case 'sendFile':
-        $user = $_POST['user'] ?? '';
+        $userToken = $_POST['userToken'] ?? '';
+        $user = resolveUserFromToken($userToken);
         $mimeType = $_POST['mimeType'] ?? 'application/octet-stream';
         $encryptedContent = $_POST['encryptedFile'] ?? '';
         $encryptedMeta = $_POST['encryptedMeta'] ?? '';
         $uploadFileName = preg_replace('/[^a-zA-Z0-9_\-.]/', '', basename($_POST['uploadFileName'] ?? ''));
+
+        if (!$user) {
+            echo json_encode(['error' => 'Session expired, please log in again', 'code' => 'session_expired']);
+            break;
+        }
 
         if (!preg_match('/^[a-zA-Z0-9_\-]+\.enc$/', $uploadFileName)) {
             echo json_encode(['error' => 'Invalid upload file name format']);
@@ -485,8 +579,17 @@ switch ($action) {
         $user = $_POST['user'] ?? '';
         $blocked = $_POST['blocked'] ?? 'false';
         $blocked = ($blocked === 'true' || $blocked === '1');
-        
+        $postSessionPwd = $_POST['sessionPwd'] ?? '';
+        $sessionPwd = preg_match('/^[0-9a-f]{32}$/', $postSessionPwd)
+            ? $postSessionPwd
+            : ($_SESSION['owned_rooms'][$roomId] ?? '');
+
         if ($user) {
+            if (!verifyRoomOwnership($roomId, $sessionPwd)) {
+                echo json_encode(['error' => 'Only the room creator can change room access']);
+                break;
+            }
+
             $users = loadUsers();
 
             if (in_array($user, $users)) {
@@ -514,7 +617,12 @@ switch ($action) {
         break;
 
     case 'removeUser':
-        $user = $_POST['user'] ?? '';
+        // Called via navigator.sendBeacon on unload -- the response is
+        // never read, so this always returns success even when the
+        // token no longer resolves (already pruned); there's no client
+        // left to react to an error.
+        $userToken = $_POST['userToken'] ?? '';
+        $user = resolveUserFromToken($userToken, false);
         if ($user) {
             $users = loadUsers();
             $index = array_search($user, $users);
@@ -523,10 +631,14 @@ switch ($action) {
                 saveUsers($users);
                 addSystemMessage("$user has left the room");
             }
-            echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['error' => 'Missing user']);
+            $sessions = loadSessions();
+            $tokenHash = hash('sha256', $userToken);
+            if (isset($sessions[$tokenHash])) {
+                unset($sessions[$tokenHash]);
+                saveSessions($sessions);
+            }
         }
+        echo json_encode(['success' => true]);
         break;
 
     default:

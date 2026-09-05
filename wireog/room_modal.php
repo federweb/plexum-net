@@ -287,9 +287,29 @@
     }
 
     function createWelcomeMessages(roomId, password = '') {
-        const welcomeMessage = '<h2 style="color: #2c3e50; margin-top: 0;">Welcome to Your Secure Chat!</h2><p style="color: #34495e;">🔒 <strong>End-to-End Encrypted:</strong> All messages, audio and files are encrypted on your device before being sent. Nobody can read your data — not the site owner, the hosting provider, or any actor monitoring the network.</p><p style="color: #34495e;">🔑 <strong>Password & Encryption:</strong> A room password strengthens your encryption key. Rooms created without a password are still fully end-to-end encrypted — the password adds an extra layer of security.</p><p style="color: #e74c3c;">🗑️ <strong>Delete All Files:</strong> If you are the creator of this room, you can permanently wipe all messages and files by typing the following command:</p><code style="font-family: monospace; font-size: 14px;">/deleteall</code><p style="color: #34495e;"><p style="color: #27ae60;">Happy chatting!</p>';
+        // The h2 line below is also the password check: verifyPassword()
+        // in CORE/index.php decrypts this message and does a startsWith()
+        // match against this exact string. Everything after the </h2> is
+        // free-form and safe to edit, but that opening tag+text must stay
+        // byte-for-byte identical or password verification breaks.
+        //
+        // The security paragraph is chosen by whether THIS room actually
+        // has a password, not a one-size-fits-all claim — a passwordless
+        // room's key is derivable from its public roomId + username, so
+        // claiming "still fully end-to-end encrypted" here would be false
+        // (see the honest disclosure already on the landing page).
+        const hasPassword = password !== '';
+        const securityParagraph = hasPassword
+            ? '<p style="color: #34495e;">🔒 <strong>End-to-End Encrypted:</strong> This room has a password. Messages, audio and files are encrypted on your device with a key derived from it before being sent — nobody without the password (not the site owner, the hosting provider, or anyone monitoring the network) can read the content.</p>'
+            : '<p style="color: #e74c3c;">⚠️ <strong>No Password Set:</strong> This room has no password, so its encryption key can be derived by anyone who knows this room\'s link and has basic technical skill. Treat it as visible to anyone with the URL, not as confidential — create a new, password-protected room for sensitive conversations.</p>';
 
-        
+        const welcomeMessage = '<h2 style="color: #2c3e50; margin-top: 0;">Welcome to Your Secure Chat!</h2>'
+            + securityParagraph
+            + '<p style="color: #34495e;">🔑 <strong>Room Access vs. Room Ownership:</strong> Being logged in here only proves you\'re a participant in this browser tab. To keep control of the room (lock/unlock it, wipe its history) from another device or after clearing cookies, open <strong>My Rooms → Export Key</strong> now and save the Admin Key somewhere safe — use <strong>Import Key</strong> to restore it later.</p>'
+            + '<p style="color: #e74c3c;">🗑️ <strong>Delete All Files:</strong> If you hold this room\'s Admin Key (the room creator), you can permanently wipe all messages and files by typing the following command:</p>'
+            + '<code style="font-family: monospace; font-size: 14px;">/deleteall</code>'
+            + '<p style="color: #27ae60;">Happy chatting!</p>';
+
         const encryptedMessage = encryptMessage(welcomeMessage, 'admin', roomId, password);
 
         const messages = [
