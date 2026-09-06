@@ -204,10 +204,16 @@ Add the following to the `server { ... }` block in `$PREFIX/etc/nginx/nginx.conf
 # Exact match: redirect bare /desktop/ to noVNC with correct WS path+params.
 # IMPORTANT: noVNC default path='websockify' builds wss://host/websockify (root),
 # but nginx only proxies under /desktop/ — must force path=desktop/websockify.
+# Delegated to desktop/index.php (fastcgi_pass), NOT a bare `return`: nginx's
+# `return` bypasses auth_request/error_page gating in the same location (fires
+# unconditionally regardless of the auth_request result), so a plain
+# `return 302 .../vnc.html` here would let anyone through unauthenticated.
 location = /desktop/ {
     auth_request /cli-auth.php;
     error_page 401 = @desktop_login;
-    return 302 /desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
+    fastcgi_pass 127.0.0.1:9000;
+    fastcgi_param SCRIPT_FILENAME $document_root/desktop/index.php;
+    include fastcgi_params;
 }
 
 # Prefix match: proxy static files + WebSocket to websockify
@@ -227,7 +233,7 @@ location /desktop/ {
 }
 
 location @desktop_login {
-    return 302 $scheme://$http_host/cli-login.php;
+    return 302 $scheme://$http_host/cli-login.php?return=$request_uri;
 }
 ```
 

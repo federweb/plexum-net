@@ -155,7 +155,7 @@ server {
     }
 
     location @cli_login {
-        return 302 \$scheme://\$http_host/cli-login.php;
+        return 302 \$scheme://\$http_host/cli-login.php?return=\$request_uri;
     }
 
     # PeerJS WebSocket + HTTP signaling proxy (meet/)

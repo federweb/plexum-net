@@ -39,16 +39,18 @@ client ──► /cli/ ──auth_request──► /cli-auth.php   (internal)
                                        │
                                        ├── 204 OK ──► proxy to 127.0.0.1:7681
                                        │
-                                       └── 401    ──► 302 /cli-login.php
+                                       └── 401    ──► 302 /cli-login.php?return=/cli/
                                                           │
                                                           └── auth_gate.php form
-                                                              └── on success → /cli/
+                                                              └── on success → back to ?return= (or /cli/)
 ```
 
 - `cli-auth.php` (internal) reads `$_SESSION['gate_auth']` from
   `~/tmp/.sessions/` and returns 204 or 401. No HTML, no body.
 - `cli-login.php` wraps `auth_gate.php` so the login form is shown
-  inside the shared theme, and redirects to `/cli/` on success.
+  inside the shared theme, and redirects back to the page that
+  triggered the login (`?return=`, stashed in the session across the
+  form's POST/redirect/GET cycle), falling back to `/cli/`.
 - Same cookie (`PHPSESSID`), same bcrypt hash
   (`~/.nodepulse/gate_password.hash`), same session as Terminal,
   FileManager, Cloud, Monitor, Bookmarks, Keychain, Browser,

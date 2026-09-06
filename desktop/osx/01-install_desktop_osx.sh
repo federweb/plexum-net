@@ -219,7 +219,9 @@ EXACT_BLOCK = '''\
         location = /desktop/ {
             auth_request /cli-auth.php;
             error_page 401 = @desktop_login;
-            return 302 $real_scheme://$host/desktop/vnc.html?path=desktop/websockify&autoconnect=1&resize=scale&reconnect=1;
+            fastcgi_pass 127.0.0.1:9000;
+            fastcgi_param SCRIPT_FILENAME $document_root/desktop/index.php;
+            include fastcgi_params;
         }
 
         # Prefix match: static noVNC files + WebSocket upgrade to websockify
@@ -239,7 +241,7 @@ EXACT_BLOCK = '''\
         }
 
         location @desktop_login {
-            return 302 $real_scheme://$host/cli-login.php;
+            return 302 $real_scheme://$host/cli-login.php?return=$request_uri;
         }
 
 '''
