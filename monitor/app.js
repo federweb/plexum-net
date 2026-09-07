@@ -57,9 +57,13 @@
     var origins = sortByTs(normalizeOrigins(
       data.seeds_origin  && data.seeds_origin.seeds   ? data.seeds_origin.seeds   : [], bestTs
     ));
+    var originUrls = {};
+    origins.forEach(function (o) { if (o.url) originUrls[normUrl(o.url)] = true; });
+
     var domains = sortByTs(normalizeDomains(
       data.seeds_domain  && data.seeds_domain.domains ? data.seeds_domain.domains : [], bestTs
-    ));
+    ).filter(function (d) { return !isStale(d.ts, 10); })
+     .filter(function (d) { return !(d.url && originUrls[normUrl(d.url)]); }));
     var network = sortByTs(normalizeNetwork(
       data.seeds_network && data.seeds_network.seeds  ? data.seeds_network.seeds  : [], bestTs
     ));
@@ -71,6 +75,22 @@
     main.appendChild(buildSection('Domain Seeds',  domains));
     main.appendChild(buildSection('Network Seeds', network));
     main.appendChild(buildSection('Online Peers',  online));
+  }
+
+  // ── URL normalization (for cross-list dedup) ─────────────────
+
+  function normUrl(url) {
+    return String(url).trim().toLowerCase().replace(/\/+$/, '');
+  }
+
+  // ── Staleness check (age in days > threshold) ────────────────
+
+  function isStale(ts, maxDays) {
+    if (!ts) return false;
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return false;
+    var ageMs = new Date() - d;
+    return ageMs > maxDays * 24 * 60 * 60 * 1000;
   }
 
   // ── Sort by ts (newest first) ────────────────────────────────
