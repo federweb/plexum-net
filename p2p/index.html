@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PulseSend — NodePulse</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0e17;
+    color: #e0e0e0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1 { font-size: 1.5rem; color: #00e5a0; letter-spacing: 2px; }
+  .subtitle { color: #667; font-size: 0.8rem; margin-bottom: 20px; }
+
+  .main-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 520px;
+    flex: 1;
+  }
+
+  .status-bar {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 16px;
+    width: 100%;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .status-bar .label { color: #667; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+  .status-bar .peer-id {
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    color: #00e5a0;
+    margin-top: 4px;
+    user-select: all;
+    cursor: pointer;
+    word-break: break-all;
+  }
+  .copy-hint { font-size: 0.65rem; color: #445; margin-top: 4px; }
+  .status-bar .status { font-size: 0.75rem; margin-top: 6px; }
+  .online { color: #00e5a0; }
+  .offline { color: #f44; }
+  .calling { color: #ffab00; }
+
+  .connect-row { display: flex; gap: 8px; width: 100%; margin-bottom: 14px; }
+  .connect-row input {
+    flex: 1;
+    padding: 14px 12px;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+    background: #111827;
+    color: #e0e0e0;
+    font-size: 1rem;
+    font-family: 'Courier New', monospace;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .connect-row input::placeholder { color: #445; }
+  .connect-row input:focus { border-color: #00e5a0; }
+  button { cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .btn-connect {
+    padding: 14px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #00e5a0;
+    color: #0a0e17;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .btn-connect:disabled { background: #1e293b; color: #445; }
+  .btn-connect:active:not(:disabled) { transform: scale(0.96); }
+
+  .connected-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    background: #0d1f19;
+    border: 1px solid #00e5a0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    width: 100%;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+  }
+  .connected-bar span { color: #00e5a0; }
+  .btn-disconnect {
+    background: #f4433625;
+    color: #f66;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .btn-disconnect:active { transform: scale(0.96); }
+
+  .incoming {
+    background: #111827;
+    border: 1px solid #ffab00;
+    border-radius: 10px;
+    padding: 14px 16px;
+    width: 100%;
+    margin-bottom: 14px;
+    text-align: center;
+    display: none;
+  }
+  .incoming p { margin-bottom: 4px; color: #ffab00; font-size: 0.9rem; }
+  .incoming .fmeta { color: #889; font-size: 0.75rem; margin-bottom: 10px; }
+  .incoming button { margin: 0 6px; padding: 12px 24px; font-size: 0.95rem; }
+  .btn-accept { background: #00e5a0; color: #0a0e17; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+  .btn-reject { background: #f44; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+
+  .dropzone {
+    width: 100%;
+    border: 2px dashed #1e293b;
+    border-radius: 12px;
+    padding: 28px 16px;
+    text-align: center;
+    color: #556;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    transition: all 0.15s;
+  }
+  .dropzone .icon { font-size: 1.8rem; display: block; margin-bottom: 6px; }
+  .dropzone.active { border-color: #00e5a0; color: #00e5a0; background: #00e5a00a; }
+  .dropzone.disabled { opacity: 0.4; pointer-events: none; }
+
+  .queue { width: 100%; }
+  .queue-row {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .queue-row .qr-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .queue-row .dir { font-size: 1rem; }
+  .queue-row .qname {
+    flex: 1;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .queue-row .qsize { color: #667; font-size: 0.7rem; }
+  .btn-cancel-row {
+    background: #1e293b;
+    color: #f66;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: #1e293b;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #00e5a0;
+    width: 0%;
+    transition: width 0.15s;
+  }
+  .progress-fill.error { background: #f44; }
+  .qr-status { font-size: 0.7rem; color: #667; }
+
+  .log {
+    width: 100%;
+    margin-top: 14px;
+    font-size: 0.7rem;
+    color: #445;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .log p { padding: 2px 0; border-bottom: 1px solid #0d1117; }
+</style>
+</head>
+<body>
+
+<h1>📤 PULSESEND</h1>
+<p class="subtitle">encrypted p2p file transfer on NodePulse</p>
+
+<div class="main-screen">
+
+  <div class="status-bar">
+    <div class="label">Your Peer ID</div>
+    <div class="peer-id" id="myPeerId" onclick="copyId()">connecting...</div>
+    <div class="copy-hint" id="copyHint">tap to copy</div>
+    <div class="status" id="statusText"><span class="offline">● connecting</span></div>
+  </div>
+
+  <div class="connect-row" id="connectRow">
+    <input type="text" id="remotePeerId" placeholder="paste peer ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <button class="btn-connect" id="connectBtn" onclick="connectToPeer()" disabled>Connetti</button>
+  </div>
+
+  <div class="connected-bar" id="connectedBar">
+    <span>connesso a <strong id="connectedPeerId"></strong></span>
+    <button class="btn-disconnect" onclick="disconnectPeer()">Disconnetti</button>
+  </div>
+
+  <div class="incoming" id="incomingBox">
+    <p>📥 File in arrivo</p>
+    <div class="fmeta" id="incomingMeta"></div>
+    <button class="btn-accept" onclick="acceptIncoming()">Accetta</button>
+    <button class="btn-reject" onclick="rejectIncoming()">Rifiuta</button>
+  </div>
+
+  <div class="dropzone disabled" id="dropzone" onclick="fileInput.click()">
+    <span class="icon">📁</span>
+    <span id="dropzoneText">connettiti a un peer per inviare file</span>
+    <input type="file" id="fileInput" multiple hidden onchange="handleFiles(this.files)">
+  </div>
+
+  <div class="queue" id="queue"></div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const CHUNK_SIZE = 64 * 1024;
+const BUFFER_HIGH = 8 * 1024 * 1024;
+const BUFFER_LOW = 2 * 1024 * 1024;
+
+let peer, conn;
+let sendQueue = [];
+let activeSend = null;
+let activeReceive = null;
+let currentIncoming = null;
+let incomingPendingQueue = [];
+let pendingAcceptResolvers = {};
+
+function log(msg) {
+  const p = document.createElement('p');
+  p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  $('log').prepend(p);
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+function formatEta(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+// ---- PEER ----
+
+function initPeer() {
+  peer = new Peer(undefined, {
+    host: location.hostname,
+    port: location.port ? parseInt(location.port) : (location.protocol === 'https:' ? 443 : 80),
+    path: '/peerjs',
+    secure: location.protocol === 'https:'
+  });
+
+  peer.on('open', id => {
+    $('myPeerId').textContent = id;
+    $('statusText').innerHTML = '<span class="online">● online</span>';
+    $('connectBtn').disabled = false;
+    log('online — ID: ' + id);
+  });
+
+  peer.on('connection', c => {
+    if (conn && conn.open) {
+      log('nuova connessione da ' + c.peer + ' — sostituisce quella precedente');
+      conn.close();
+    }
+    wireConnection(c);
+  });
+
+  peer.on('disconnected', () => {
+    $('statusText').innerHTML = '<span class="offline">● reconnecting...</span>';
+    log('disconnected — reconnecting');
+    peer.reconnect();
+  });
+
+  peer.on('error', err => {
+    log('error: ' + err.type);
+    if (err.type === 'peer-unavailable') {
+      alert('Peer non trovato. Controlla l\'ID.');
+    }
+  });
+}
+
+initPeer();
+
+// ---- COPY ----
+
+function copyId() {
+  const id = $('myPeerId').textContent;
+  if (id === 'connecting...') return;
+  navigator.clipboard.writeText(id).then(() => {
+    $('copyHint').textContent = 'copied!';
+    setTimeout(() => { $('copyHint').textContent = 'tap to copy'; }, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = id;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    $('copyHint').textContent = 'copied!';
+    setTimeout(() => { $('copyHint').textContent = 'tap to copy'; }, 2000);
+  });
+}
+
+// ---- CONNECTION ----
+
+function connectToPeer() {
+  const remoteId = $('remotePeerId').value.trim();
+  if (!remoteId) return;
+  $('statusText').innerHTML = '<span class="calling">● connecting...</span>';
+  log('connessione a ' + remoteId);
+  wireConnection(peer.connect(remoteId, { reliable: true }));
+}
+
+function wireConnection(c) {
+  conn = c;
+  conn.on('open', () => {
+    $('statusText').innerHTML = '<span class="online">● online</span>';
+    $('connectRow').style.display = 'none';
+    $('connectedBar').style.display = 'flex';
+    $('connectedPeerId').textContent = conn.peer;
+    $('dropzone').classList.remove('disabled');
+    $('dropzoneText').textContent = 'clicca o trascina i file qui';
+    log('connesso a ' + conn.peer);
+    sendNextInQueue();
+    showNextIncoming();
+  });
+  conn.on('data', handleData);
+  conn.on('close', () => {
+    if (conn === c) {
+      log('peer disconnesso');
+      resetConnectionUI();
+    }
+  });
+  conn.on('error', err => log('connection error: ' + err));
+}
+
+function disconnectPeer() {
+  if (conn) conn.close();
+  resetConnectionUI();
+}
+
+function resetConnectionUI() {
+  conn = null;
+  $('statusText').innerHTML = '<span class="online">● online</span>';
+  $('connectRow').style.display = 'flex';
+  $('connectedBar').style.display = 'none';
+  $('dropzone').classList.add('disabled');
+  $('dropzoneText').textContent = 'connettiti a un peer per inviare file';
+}
+
+// ---- DROPZONE ----
+
+const dropzone = $('dropzone');
+const fileInput = $('fileInput');
+
+['dragover', 'dragenter'].forEach(evt => {
+  dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    if (!dropzone.classList.contains('disabled')) dropzone.classList.add('active');
+  });
+});
+['dragleave', 'drop'].forEach(evt => {
+  dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropzone.classList.remove('active');
+  });
+});
+dropzone.addEventListener('drop', e => {
+  if (dropzone.classList.contains('disabled')) return;
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+function handleFiles(fileList) {
+  for (const file of fileList) sendQueue.push(file);
+  fileInput.value = '';
+  sendNextInQueue();
+}
+
+// ---- SEND ----
+
+function makeId() {
+  return 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function addQueueRow(id, dir, name, size) {
+  const row = document.createElement('div');
+  row.className = 'queue-row';
+  row.id = 'row-' + id;
+  row.innerHTML = `
+    <div class="qr-top">
+      <span class="dir">${dir === 'up' ? '⬆️' : '⬇️'}</span>
+      <span class="qname">${name}</span>
+      <span class="qsize">${formatBytes(size)}</span>
+      <button class="btn-cancel-row" id="cancel-${id}" onclick="cancelTransfer('${id}')">Annulla</button>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="fill-${id}"></div></div>
+    <div class="qr-status" id="status-${id}">in coda...</div>
+  `;
+  $('queue').prepend(row);
+}
+
+function updateRowStatus(id, text) {
+  const el = $('status-' + id);
+  if (el) el.textContent = text;
+}
+
+function removeCancelBtn(id) {
+  const btn = $('cancel-' + id);
+  if (btn) btn.remove();
+}
+
+function updateProgress(id, transferred, total, startTime, isError) {
+  const fill = $('fill-' + id);
+  if (fill) {
+    fill.style.width = Math.min(100, (transferred / total) * 100) + '%';
+    if (isError) fill.classList.add('error');
+  }
+  const elapsed = (Date.now() - startTime) / 1000;
+  const speed = elapsed > 0 ? transferred / elapsed : 0;
+  const eta = speed > 0 ? (total - transferred) / speed : Infinity;
+  updateRowStatus(id, `${formatBytes(transferred)} / ${formatBytes(total)} — ${formatBytes(speed)}/s — ETA ${formatEta(eta)}`);
+}
+
+async function sendNextInQueue() {
+  if (activeSend || sendQueue.length === 0 || !conn || !conn.open) return;
+  const file = sendQueue.shift();
+  const id = makeId();
+  activeSend = { id, file, name: file.name, size: file.size, cancelled: false };
+  addQueueRow(id, 'up', file.name, file.size);
+  updateRowStatus(id, 'in attesa di accettazione...');
+  conn.send({ type: 'file-meta', id, name: file.name, size: file.size, mime: file.type || 'application/octet-stream' });
+
+  const accepted = await new Promise(resolve => { pendingAcceptResolvers[id] = resolve; });
+  delete pendingAcceptResolvers[id];
+
+  if (activeSend.cancelled) {
+    updateRowStatus(id, 'annullato');
+    removeCancelBtn(id);
+    activeSend = null;
+    sendNextInQueue();
+    return;
+  }
+  if (!accepted) {
+    updateRowStatus(id, 'rifiutato dal peer');
+    removeCancelBtn(id);
+    activeSend = null;
+    sendNextInQueue();
+    return;
+  }
+
+  activeSend.startTime = Date.now();
+  updateRowStatus(id, 'invio in corso...');
+  log('invio "' + file.name + '" a ' + conn.peer);
+  await sendFileChunks(activeSend);
+  activeSend = null;
+  sendNextInQueue();
+}
+
+async function waitForBufferedAmountLow() {
+  return new Promise(resolve => {
+    const dc = conn && conn.dataChannel;
+    if (!dc || dc.bufferedAmount <= BUFFER_HIGH) return resolve();
+    const check = () => {
+      if (!conn || !conn.open || dc.bufferedAmount <= BUFFER_LOW) return resolve();
+      setTimeout(check, 50);
+    };
+    check();
+  });
+}
+
+async function sendFileChunks(transfer) {
+  const { id, file, size } = transfer;
+  let offset = 0;
+  while (offset < size) {
+    if (transfer.cancelled || !conn || !conn.open) {
+      if (conn && conn.open) conn.send({ type: 'file-cancel', id });
+      updateRowStatus(id, 'annullato');
+      removeCancelBtn(id);
+      return;
+    }
+    await waitForBufferedAmountLow();
+    const slice = file.slice(offset, offset + CHUNK_SIZE);
+    const buf = await slice.arrayBuffer();
+    conn.send(buf);
+    offset += buf.byteLength;
+    updateProgress(id, offset, size, transfer.startTime);
+  }
+  if (conn && conn.open) conn.send({ type: 'file-end', id });
+  updateRowStatus(id, 'inviato ✓');
+  removeCancelBtn(id);
+  log('"' + file.name + '" inviato');
+}
+
+// ---- RECEIVE ----
+
+function handleData(data) {
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+    onChunk(data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+    return;
+  }
+  if (data && typeof data === 'object' && data.type) {
+    switch (data.type) {
+      case 'file-meta': onIncomingMeta(data); break;
+      case 'file-accept': if (pendingAcceptResolvers[data.id]) pendingAcceptResolvers[data.id](true); break;
+      case 'file-reject': if (pendingAcceptResolvers[data.id]) pendingAcceptResolvers[data.id](false); break;
+      case 'file-end': onFileEnd(data.id); break;
+      case 'file-cancel': onRemoteCancel(data.id); break;
+    }
+  }
+}
+
+function onIncomingMeta(meta) {
+  if (currentIncoming || activeReceive) {
+    incomingPendingQueue.push(meta);
+    return;
+  }
+  showIncoming(meta);
+}
+
+function showIncoming(meta) {
+  currentIncoming = meta;
+  $('incomingMeta').textContent = meta.name + ' — ' + formatBytes(meta.size);
+  $('incomingBox').style.display = 'block';
+}
+
+function showNextIncoming() {
+  if (currentIncoming || activeReceive || incomingPendingQueue.length === 0) return;
+  showIncoming(incomingPendingQueue.shift());
+}
+
+async function acceptIncoming() {
+  const meta = currentIncoming;
+  currentIncoming = null;
+  $('incomingBox').style.display = 'none';
+
+  addQueueRow(meta.id, 'down', meta.name, meta.size);
+  updateRowStatus(meta.id, 'preparazione...');
+
+  const t = { id: meta.id, name: meta.name, size: meta.size, mime: meta.mime, received: 0 };
+  try {
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({ suggestedName: meta.name });
+      t.writer = await handle.createWritable();
+      t.mode = 'stream';
+    } else {
+      t.chunks = [];
+      t.mode = 'memory';
+    }
+  } catch (e) {
+    log('salvataggio annullato: ' + meta.name);
+    if (conn && conn.open) conn.send({ type: 'file-reject', id: meta.id });
+    updateRowStatus(meta.id, 'annullato');
+    removeCancelBtn(meta.id);
+    showNextIncoming();
+    return;
+  }
+
+  t.startTime = Date.now();
+  activeReceive = t;
+  if (conn && conn.open) conn.send({ type: 'file-accept', id: meta.id });
+  updateRowStatus(meta.id, 'ricezione in corso...');
+  log('ricezione "' + meta.name + '" da ' + conn.peer);
+}
+
+function rejectIncoming() {
+  const meta = currentIncoming;
+  currentIncoming = null;
+  $('incomingBox').style.display = 'none';
+  if (conn && conn.open) conn.send({ type: 'file-reject', id: meta.id });
+  showNextIncoming();
+}
+
+function onChunk(buf) {
+  const t = activeReceive;
+  if (!t) return;
+  if (t.mode === 'stream') {
+    t.writer.write(buf);
+  } else {
+    t.chunks.push(new Uint8Array(buf));
+  }
+  t.received += buf.byteLength;
+  updateProgress(t.id, t.received, t.size, t.startTime);
+}
+
+async function onFileEnd(id) {
+  const t = activeReceive;
+  if (!t || t.id !== id) return;
+  try {
+    if (t.mode === 'stream') {
+      await t.writer.close();
+    } else {
+      const blob = new Blob(t.chunks, { type: t.mime || 'application/octet-stream' });
+      triggerDownload(blob, t.name);
+    }
+    updateRowStatus(id, 'ricevuto ✓');
+    log('"' + t.name + '" ricevuto');
+  } catch (e) {
+    updateRowStatus(id, 'errore salvataggio file');
+  }
+  removeCancelBtn(id);
+  activeReceive = null;
+  showNextIncoming();
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function onRemoteCancel(id) {
+  if (activeSend && activeSend.id === id) {
+    activeSend.cancelled = true;
+    return;
+  }
+  if (activeReceive && activeReceive.id === id) {
+    const t = activeReceive;
+    if (t.mode === 'stream' && t.writer) {
+      try { await t.writer.abort(); } catch (e) {}
+    }
+    updateRowStatus(id, 'annullato dal mittente');
+    removeCancelBtn(id);
+    activeReceive = null;
+    showNextIncoming();
+  }
+}
+
+function cancelTransfer(id) {
+  if (activeSend && activeSend.id === id) {
+    activeSend.cancelled = true;
+    return;
+  }
+  if (activeReceive && activeReceive.id === id) {
+    if (conn && conn.open) conn.send({ type: 'file-cancel', id });
+    onRemoteCancel(id);
+  }
+}
+</script>
+</body>
+</html>

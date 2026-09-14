@@ -556,6 +556,20 @@ if ($np_node_id && file_exists($np_directory_file)) {
         </a>
         <?php endif; ?>
 
+        
+        <?php if (is_dir(__DIR__ . '/p2p')): ?>
+        <!-- p2p -->
+        <a href="p2p/" target="_blank" class="card p2p" aria-label="Open PulseSend">
+            <div class="card-icon">&#x1F4E4;</div>
+            <div>
+                <div class="card-title">P2P</div>
+                <div class="card-desc">Large file peer-to-peer transfer, directly between two browsers, with client NAT resolution handled on-node.</div>
+            </div>
+            <div class="card-arrow">Open &rarr;</div>
+        </a>
+        <?php endif; ?>
+
+
         <?php if (is_dir(__DIR__ . '/blog')): ?>
         <!-- Blog -->
         <a href="blog/" class="card blog" aria-label="Open Blog">
