@@ -2,11 +2,20 @@
 
 ## What Is Plexum
 
-Today's internet is locked behind a handful of cloud providers. Publishing anything online requires a domain, a static IP, and recurring costs. For billions of people on phones or behind NAT, running a server is simply not an option.
+NodePulse turns any device you already own — an Android phone, a WSL2 machine, a Mac, a Raspberry Pi — into a self-hosted environment reachable from the open web like a regular website, with no domain, no static IP, and no hosting bill. It runs a local HTTPS stack (nginx/lighttpd + PHP behind FastCGI), exposes it through a Cloudflare tunnel, and signs its public URL with an RSA‑2048 keypair that is the node's permanent identity. When the tunnel URL changes, the node just signs and announces the new one — the identity underneath never changes.
 
-Plexum flips this model. Any device with an internet connection — an Android phone in a drawer, a Windows laptop, a Raspberry Pi — becomes a publicly reachable server. It runs a local HTTPS server, exposes it through a relay tunnel, and announces its URL to the network with a cryptographic signature. When the URL changes, the node signs and announces the new one. A browser-side recovery system ensures visitors are never lost.
+On top of that transport layer sits a set of privacy‑first tools, most with zero third‑party dependencies, sitting behind a shared bcrypt‑protected session:
 
-The protocol that powers this is called **NodePulse**. It handles identity, discovery, gossip propagation, and self-healing — no account, no registration, no centralized authority. Your identity is your RSA key pair, and it persists across URL changes, device restarts, and relay migrations.
+- **Shell** (`cli/`) — a real PTY over WebSocket, backed by a shared `tmux` session. Several operators can attach to the same session at once and watch the same terminal live — same cursor, same output, same command history, as it happens.
+- **PulseDesktop** (`desktop/`) — a full Openbox desktop rendered server-side and streamed via Xvnc/websockify into the browser, no client to install. Like the shell, it's a shared session: everyone connected sees the same mouse move and the same windows open, in real time.
+- **AV Stream** — low‑bandwidth remote video/audio surveillance of the node's own camera and mic (JPEG polling + Opus chunks), for keeping an eye on the physical device the node runs on.
+- **Meet** and **Wireog** — encrypted browser‑to‑browser audio/video calls and chat, with NAT traversal resolved by the node itself rather than a third‑party TURN relay.
+- **P2P** — large file transfers directly between two browsers, again with NAT resolution mediated on‑node instead of passing through intermediate storage.
+- **Cloud** and **File Manager** — conventional file storage and filesystem browsing, just served from your own device instead of someone else's.
+
+Because Shell and PulseDesktop are backed by persistent, resumable sessions (`tmux`, `Xvnc`) rather than one-off request/response connections, they survive disconnects. That makes a NodePulse node a practical execution environment for an LLM agent: you can hand it a live shell or a browser tab, walk away, and come back later to find the session exactly where you left it — nothing resets just because no one was watching.
+
+The protocol handling identity, discovery, gossip propagation and self‑healing is **NodePulse** itself — no account, no registration, no central authority. Identity lives in `~/.nodepulse/` as an RSA key pair and persists across URL changes, device restarts and relay migrations. A browser-side recovery system (the Beacon) keeps visitors able to find the node again even after its tunnel URL moves.
 
 ---
 
