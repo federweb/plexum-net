@@ -5,7 +5,6 @@
   <a href="/filemanager/" title="File Manager" class="mp-btn<?php if(strpos($_SERVER['SCRIPT_NAME'], '/filemanager/') !== false) echo ' mp-active'; ?>">&#x1F4C2;</a>
   <a href="/cloud/" title="Cloud" class="mp-btn<?php if(strpos($_SERVER['SCRIPT_NAME'], '/cloud/') !== false) echo ' mp-active'; ?>">&#x2B06;</a>
   <a href="/monitor/" title="Monitor" class="mp-btn<?php if(strpos($_SERVER['SCRIPT_NAME'], '/monitor/') !== false) echo ' mp-active'; ?>">&#x1F4CA;</a>
-  <a href="/bookmarks/" title="Bookmarks" class="mp-btn<?php if(strpos($_SERVER['SCRIPT_NAME'], '/bookmarks/') !== false) echo ' mp-active'; ?>">&#x2B50;</a>
 </div>
 <style>
 @media(max-width:768px){#menu-panel{display:none!important}}
