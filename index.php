@@ -448,17 +448,6 @@ if ($np_node_id && file_exists($np_directory_file)) {
         </a>
         <?php endif; ?>
 
-        <?php if (is_dir(__DIR__ . '/bookmarks')): ?>
-        <!-- Bookmarks -->
-        <a href="bookmarks/" class="card bookmarks" aria-label="Open Bookmarks">
-            <div class="card-icon">&#x2B50;</div>
-            <div>
-                <div class="card-title">Bookmarks</div>
-                <div class="card-desc">Manage your favourite links. Search, organize by folders and quickly access your saved bookmarks.</div>
-            </div>
-            <div class="card-arrow">Open &rarr;</div>
-        </a>
-        <?php endif; ?>
 
         <?php if (is_dir(__DIR__ . '/av_stream')): ?>
         <!-- AV Stream -->
