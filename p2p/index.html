@@ -185,6 +185,7 @@
     transition: width 0.15s;
   }
   .progress-fill.error { background: #f44; }
+  .progress-fill.paused { background: #ffab00; }
   .qr-status { font-size: 0.7rem; color: #667; }
 
   .log {
@@ -246,8 +247,13 @@ const $ = id => document.getElementById(id);
 const CHUNK_SIZE = 64 * 1024;
 const BUFFER_HIGH = 8 * 1024 * 1024;
 const BUFFER_LOW = 2 * 1024 * 1024;
+// chunks are batched into a Blob every MEM_BATCH_SIZE bytes instead of being kept as
+// separate ArrayBuffers in a JS array — Blob storage is not counted against the tab's
+// JS heap the same way, which is what let large transfers exhaust memory before.
+const MEM_BATCH_SIZE = 16 * 1024 * 1024;
 
 let peer, conn;
+let lastRemotePeerId = '';
 let sendQueue = [];
 let activeSend = null;
 let activeReceive = null;
@@ -359,22 +365,65 @@ function wireConnection(c) {
     $('dropzone').classList.remove('disabled');
     $('dropzoneText').textContent = 'clicca o trascina i file qui';
     log('connesso a ' + conn.peer);
+    lastRemotePeerId = conn.peer;
     sendNextInQueue();
     showNextIncoming();
+    announceResume();
   });
   conn.on('data', handleData);
   conn.on('close', () => {
     if (conn === c) {
       log('peer disconnesso');
-      resetConnectionUI();
+      handleConnectionLost();
     }
   });
   conn.on('error', err => log('connection error: ' + err));
 }
 
 function disconnectPeer() {
+  // explicit user disconnect: give up on any in-flight transfer instead of leaving it "paused"
+  if (activeSend) {
+    activeSend.cancelled = true;
+    updateRowStatus(activeSend.id, 'annullato');
+    removeCancelBtn(activeSend.id);
+    activeSend = null;
+  }
+  if (activeReceive) {
+    if (activeReceive.mode === 'stream' && activeReceive.writer) activeReceive.writer.abort().catch(() => {});
+    updateRowStatus(activeReceive.id, 'annullato');
+    removeCancelBtn(activeReceive.id);
+    activeReceive = null;
+    showNextIncoming();
+  }
   if (conn) conn.close();
   resetConnectionUI();
+}
+
+// connection dropped unexpectedly (timeout, network blip, tab backgrounded, ...):
+// keep activeSend/activeReceive state intact so the transfer can resume once reconnected
+function handleConnectionLost() {
+  if (conn) lastRemotePeerId = conn.peer;
+  if (activeSend && !activeSend.cancelled) {
+    updateRowStatus(activeSend.id, 'connessione persa — riconnetti per riprendere');
+    markRowPaused(activeSend.id);
+  }
+  if (activeReceive) {
+    updateRowStatus(activeReceive.id, 'connessione persa — riconnetti per riprendere');
+    markRowPaused(activeReceive.id);
+  }
+  resetConnectionUI();
+  if (lastRemotePeerId) $('remotePeerId').value = lastRemotePeerId;
+}
+
+// after reconnecting to the same peer, ask them to resume any incoming file that
+// was left partway through — receivedBytes is the source of truth for where to continue
+function announceResume() {
+  if (activeReceive && activeReceive.received > 0 && activeReceive.received < activeReceive.size) {
+    log('richiesta ripresa per "' + activeReceive.name + '"');
+    activeReceive.rateBaseline = { bytes: activeReceive.received, time: Date.now() };
+    conn.send({ type: 'resume-request', id: activeReceive.id, receivedBytes: activeReceive.received });
+    updateRowStatus(activeReceive.id, 'ripresa in corso...');
+  }
 }
 
 function resetConnectionUI() {
@@ -447,16 +496,24 @@ function removeCancelBtn(id) {
   if (btn) btn.remove();
 }
 
-function updateProgress(id, transferred, total, startTime, isError) {
+function updateProgress(id, transferred, total, startTime, baseline) {
   const fill = $('fill-' + id);
   if (fill) {
     fill.style.width = Math.min(100, (transferred / total) * 100) + '%';
-    if (isError) fill.classList.add('error');
+    fill.classList.remove('paused', 'error');
   }
-  const elapsed = (Date.now() - startTime) / 1000;
-  const speed = elapsed > 0 ? transferred / elapsed : 0;
+  // baseline anchors speed/ETA to the last resume point, so a long pause
+  // (waiting to reconnect) doesn't make the speed look artificially low afterwards
+  const base = baseline || { bytes: 0, time: startTime };
+  const elapsed = (Date.now() - base.time) / 1000;
+  const speed = elapsed > 0 ? (transferred - base.bytes) / elapsed : 0;
   const eta = speed > 0 ? (total - transferred) / speed : Infinity;
   updateRowStatus(id, `${formatBytes(transferred)} / ${formatBytes(total)} — ${formatBytes(speed)}/s — ETA ${formatEta(eta)}`);
+}
+
+function markRowPaused(id) {
+  const fill = $('fill-' + id);
+  if (fill) fill.classList.add('paused');
 }
 
 async function sendNextInQueue() {
@@ -487,11 +544,42 @@ async function sendNextInQueue() {
   }
 
   activeSend.startTime = Date.now();
+  activeSend.rateBaseline = { bytes: 0, time: activeSend.startTime };
   updateRowStatus(id, 'invio in corso...');
   log('invio "' + file.name + '" a ' + conn.peer);
-  await sendFileChunks(activeSend);
-  activeSend = null;
-  sendNextInQueue();
+  const result = await sendFileChunks(activeSend, 0);
+  if (result !== 'paused') {
+    activeSend = null;
+    sendNextInQueue();
+  }
+}
+
+// a peer that reconnects mid-transfer asks us to resume from the byte offset it
+// actually has durably stored — we trust that number over our own last-sent offset
+async function handleResumeRequest(data) {
+  if (!activeSend || activeSend.id !== data.id || activeSend.cancelled) {
+    if (conn && conn.open) conn.send({ type: 'resume-unavailable', id: data.id });
+    return;
+  }
+  log('ripresa invio "' + activeSend.file.name + '" da ' + formatBytes(data.receivedBytes));
+  activeSend.rateBaseline = { bytes: data.receivedBytes, time: Date.now() };
+  updateRowStatus(activeSend.id, 'ripresa invio...');
+  const result = await sendFileChunks(activeSend, data.receivedBytes);
+  if (result !== 'paused') {
+    activeSend = null;
+    sendNextInQueue();
+  }
+}
+
+function handleResumeUnavailable(id) {
+  if (activeReceive && activeReceive.id === id) {
+    log('impossibile riprendere "' + activeReceive.name + '" — il mittente non ha più il file');
+    updateRowStatus(id, 'impossibile riprendere — richiedi un nuovo invio');
+    removeCancelBtn(id);
+    if (activeReceive.mode === 'stream' && activeReceive.writer) activeReceive.writer.abort().catch(() => {});
+    activeReceive = null;
+    showNextIncoming();
+  }
 }
 
 async function waitForBufferedAmountLow() {
@@ -506,27 +594,44 @@ async function waitForBufferedAmountLow() {
   });
 }
 
-async function sendFileChunks(transfer) {
+async function sendFileChunks(transfer, startOffset) {
   const { id, file, size } = transfer;
-  let offset = 0;
+  let offset = startOffset || 0;
   while (offset < size) {
-    if (transfer.cancelled || !conn || !conn.open) {
+    if (transfer.cancelled) {
       if (conn && conn.open) conn.send({ type: 'file-cancel', id });
       updateRowStatus(id, 'annullato');
       removeCancelBtn(id);
-      return;
+      return 'cancelled';
+    }
+    if (!conn || !conn.open) {
+      updateRowStatus(id, 'connessione persa — in attesa di riconnessione');
+      markRowPaused(id);
+      return 'paused';
     }
     await waitForBufferedAmountLow();
+    if (!conn || !conn.open) {
+      updateRowStatus(id, 'connessione persa — in attesa di riconnessione');
+      markRowPaused(id);
+      return 'paused';
+    }
     const slice = file.slice(offset, offset + CHUNK_SIZE);
     const buf = await slice.arrayBuffer();
-    conn.send(buf);
+    try {
+      conn.send(buf);
+    } catch (e) {
+      updateRowStatus(id, 'connessione persa — in attesa di riconnessione');
+      markRowPaused(id);
+      return 'paused';
+    }
     offset += buf.byteLength;
-    updateProgress(id, offset, size, transfer.startTime);
+    updateProgress(id, offset, size, transfer.startTime, transfer.rateBaseline);
   }
   if (conn && conn.open) conn.send({ type: 'file-end', id });
   updateRowStatus(id, 'inviato ✓');
   removeCancelBtn(id);
   log('"' + file.name + '" inviato');
+  return 'done';
 }
 
 // ---- RECEIVE ----
@@ -543,6 +648,8 @@ function handleData(data) {
       case 'file-reject': if (pendingAcceptResolvers[data.id]) pendingAcceptResolvers[data.id](false); break;
       case 'file-end': onFileEnd(data.id); break;
       case 'file-cancel': onRemoteCancel(data.id); break;
+      case 'resume-request': handleResumeRequest(data); break;
+      case 'resume-unavailable': handleResumeUnavailable(data.id); break;
     }
   }
 }
@@ -581,7 +688,11 @@ async function acceptIncoming() {
       t.writer = await handle.createWritable();
       t.mode = 'stream';
     } else {
-      t.chunks = [];
+      // no direct disk access in this browser: batch chunks into Blobs instead of
+      // keeping every raw ArrayBuffer alive in a JS array, to avoid exhausting tab memory
+      t.pendingRaw = [];
+      t.pendingRawSize = 0;
+      t.blobParts = [];
       t.mode = 'memory';
     }
   } catch (e) {
@@ -594,6 +705,7 @@ async function acceptIncoming() {
   }
 
   t.startTime = Date.now();
+  t.rateBaseline = { bytes: 0, time: t.startTime };
   activeReceive = t;
   if (conn && conn.open) conn.send({ type: 'file-accept', id: meta.id });
   updateRowStatus(meta.id, 'ricezione in corso...');
@@ -612,12 +724,21 @@ function onChunk(buf) {
   const t = activeReceive;
   if (!t) return;
   if (t.mode === 'stream') {
-    t.writer.write(buf);
+    t.writer.write(buf).catch(e => log('errore scrittura su disco: ' + e));
   } else {
-    t.chunks.push(new Uint8Array(buf));
+    t.pendingRaw.push(new Uint8Array(buf));
+    t.pendingRawSize += buf.byteLength;
+    if (t.pendingRawSize >= MEM_BATCH_SIZE) flushPendingRaw(t);
   }
   t.received += buf.byteLength;
-  updateProgress(t.id, t.received, t.size, t.startTime);
+  updateProgress(t.id, t.received, t.size, t.startTime, t.rateBaseline);
+}
+
+function flushPendingRaw(t) {
+  if (!t.pendingRaw.length) return;
+  t.blobParts.push(new Blob(t.pendingRaw));
+  t.pendingRaw = [];
+  t.pendingRawSize = 0;
 }
 
 async function onFileEnd(id) {
@@ -627,7 +748,9 @@ async function onFileEnd(id) {
     if (t.mode === 'stream') {
       await t.writer.close();
     } else {
-      const blob = new Blob(t.chunks, { type: t.mime || 'application/octet-stream' });
+      flushPendingRaw(t);
+      const blob = new Blob(t.blobParts, { type: t.mime || 'application/octet-stream' });
+      t.blobParts = null;
       triggerDownload(blob, t.name);
     }
     updateRowStatus(id, 'ricevuto ✓');
@@ -670,7 +793,15 @@ async function onRemoteCancel(id) {
 
 function cancelTransfer(id) {
   if (activeSend && activeSend.id === id) {
-    activeSend.cancelled = true;
+    if (!conn || !conn.open) {
+      // no live connection to notice the cancel flag — finalize locally right away
+      updateRowStatus(id, 'annullato');
+      removeCancelBtn(id);
+      activeSend = null;
+      sendNextInQueue();
+    } else {
+      activeSend.cancelled = true;
+    }
     return;
   }
   if (activeReceive && activeReceive.id === id) {
