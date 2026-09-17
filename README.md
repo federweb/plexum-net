@@ -4,7 +4,7 @@
 
 NodePulse turns any device you already own — an Android phone, a WSL2 machine, a Mac, a Raspberry Pi — into a self-hosted environment reachable from the open web like a regular website, with no domain, no static IP, and no hosting bill. It runs a local HTTPS stack (nginx/lighttpd + PHP behind FastCGI), exposes it through a Cloudflare tunnel, and signs its public URL with an RSA‑2048 keypair that is the node's permanent identity. When the tunnel URL changes, the node just signs and announces the new one — the identity underneath never changes.
 
-On top of that transport layer sits a set of privacy‑first tools, all with zero third‑party dependencies, sitting behind a shared bcrypt‑protected session:
+On top of that transport layer sits a set of privacy‑first tools, all self‑contained on the node — nothing calls out to an external service — sitting behind a shared bcrypt‑protected session:
 
 - **Shell** (`cli/`) — a real PTY over WebSocket, backed by a shared `tmux` session. Several operators can attach to the same session at once and watch the same terminal live — same cursor, same output, same command history, as it happens.
 - **PulseDesktop** (`desktop/`) — a full Openbox desktop rendered server-side and streamed via Xvnc/websockify into the browser, no client to install. Like the shell, it's a shared session: everyone connected sees the same mouse move and the same windows open, in real time.
