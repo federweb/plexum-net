@@ -4,7 +4,7 @@
 
 NodePulse turns any device you already own — an Android phone, a WSL2 machine, a Mac, a Raspberry Pi — into a self-hosted environment reachable from the open web like a regular website, with no domain, no static IP, and no hosting bill. It runs a local HTTPS stack (nginx/lighttpd + PHP behind FastCGI), exposes it through a Cloudflare tunnel, and signs its public URL with an RSA‑2048 keypair that is the node's permanent identity. When the tunnel URL changes, the node just signs and announces the new one — the identity underneath never changes.
 
-On top of that transport layer sits a set of privacy‑first tools, most with zero third‑party dependencies, sitting behind a shared bcrypt‑protected session:
+On top of that transport layer sits a set of privacy‑first tools, all with zero third‑party dependencies, sitting behind a shared bcrypt‑protected session:
 
 - **Shell** (`cli/`) — a real PTY over WebSocket, backed by a shared `tmux` session. Several operators can attach to the same session at once and watch the same terminal live — same cursor, same output, same command history, as it happens.
 - **PulseDesktop** (`desktop/`) — a full Openbox desktop rendered server-side and streamed via Xvnc/websockify into the browser, no client to install. Like the shell, it's a shared session: everyone connected sees the same mouse move and the same windows open, in real time.
@@ -13,7 +13,7 @@ On top of that transport layer sits a set of privacy‑first tools, most with ze
 - **P2P** — large file transfers directly between two browsers, again with NAT resolution mediated on‑node instead of passing through intermediate storage.
 - **Cloud** and **File Manager** — conventional file storage and filesystem browsing, just served from your own device instead of someone else's.
 
-Because Shell and PulseDesktop are backed by persistent, resumable sessions (`tmux`, `Xvnc`) rather than one-off request/response connections, they survive disconnects. That makes a NodePulse node a practical execution environment for an LLM agent: you can hand it a live shell or a browser tab, walk away, and come back later to find the session exactly where you left it — nothing resets just because no one was watching.
+Because Shell and PulseDesktop are backed by persistent server-side sessions (`tmux`, `Xvnc`) rather than one-off request/response connections, the session lives on the node, not in the browser tab. Close the browser, shut the laptop, open a completely different device days later — the shell or desktop is still there, still running, unaffected by the client that was watching it. And because it's the same server-side session for everyone, two operators connecting from two different locations at the same time see each other's actions live, in the same terminal or the same desktop, as they happen. That makes a NodePulse node a practical execution environment for an LLM agent: hand it a live shell or a browser tab and it keeps working independently of whether — or from where — anyone is watching.
 
 The protocol handling identity, discovery, gossip propagation and self‑healing is **NodePulse** itself — no account, no registration, no central authority. Identity lives in `~/.nodepulse/` as an RSA key pair and persists across URL changes, device restarts and relay migrations. A browser-side recovery system (the Beacon) keeps visitors able to find the node again even after its tunnel URL moves.
 
