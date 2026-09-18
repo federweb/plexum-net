@@ -43,13 +43,17 @@ info "Updating package lists..."
 apt update -y > /dev/null 2>&1
 ok "Package lists updated"
 
-info "Installing packages (php, nginx, nodejs, python3, tmux, curl, openssl)..."
+info "Installing packages (php, nginx, python3, tmux, curl, openssl)..."
 DEBIAN_FRONTEND=noninteractive apt install -y \
     php php-cgi php-curl php-mbstring php-intl php-zip php-fileinfo \
     nginx curl unzip openssl python3 python3-pip tmux \
-    nodejs npm \
     > /dev/null 2>&1
 ok "Packages installed"
+
+info "Installing Node.js (latest LTS via NodeSource)..."
+curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - > /dev/null 2>&1
+DEBIAN_FRONTEND=noninteractive apt install -y nodejs > /dev/null 2>&1
+ok "Node.js $(node -v) installed"
 
 info "Installing aiohttp for PulseTerminal..."
 pip3 install --break-system-packages -q aiohttp > /dev/null 2>&1 || \

@@ -101,7 +101,6 @@ PKGS=(
     curl unzip openssl
     python3 python3-pip
     tmux
-    nodejs npm
 )
 
 info "Installing packages: ${PKGS[*]}"
@@ -110,6 +109,15 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${PKGS[@]}" >> "$APT_LOG
     fail "Package installation failed — see $APT_LOG"
 }
 ok "Packages installed"
+
+# Debian's own repo lags LTS releases badly (Bookworm ships nodejs 18.x);
+# pull the current LTS from the official NodeSource repo instead.
+info "Installing Node.js (latest LTS via NodeSource)..."
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - >> "$APT_LOG" 2>&1 \
+    || fail "NodeSource repo setup failed — see $APT_LOG"
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs >> "$APT_LOG" 2>&1 \
+    || fail "nodejs install failed — see $APT_LOG"
+ok "Node.js $(node -v) installed"
 
 # Verify every binary we actually depend on (apt can 'succeed' partially)
 for bin in php php-cgi curl unzip openssl python3 tmux node npm; do
