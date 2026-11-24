@@ -110,13 +110,45 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${PKGS[@]}" >> "$APT_LOG
 }
 ok "Packages installed"
 
-# Debian's own repo lags LTS releases badly (Bookworm ships nodejs 18.x);
-# pull the current LTS from the official NodeSource repo instead.
-info "Installing Node.js (latest LTS via NodeSource)..."
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - >> "$APT_LOG" 2>&1 \
-    || fail "NodeSource repo setup failed — see $APT_LOG"
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs >> "$APT_LOG" 2>&1 \
-    || fail "nodejs install failed — see $APT_LOG"
+# Node.js: Debian's own repo lags LTS releases badly (Bookworm ships 18.x),
+# so pull the current LTS from the official NodeSource repo instead.
+# - The setup script is saved to a file and run with DEBIAN_FRONTEND passed
+#   through sudo: it runs its own apt update/install, which would otherwise
+#   get an interactive debconf frontend.
+# - NodeSource only builds amd64/arm64: on a 32-bit (armhf) userland fall
+#   back to Debian's nodejs + npm, which is enough for pm2 + PeerServer.
+DPKG_ARCH="$(dpkg --print-architecture)"
+if [ "$DPKG_ARCH" = "arm64" ] || [ "$DPKG_ARCH" = "amd64" ]; then
+    info "Installing Node.js (latest LTS via NodeSource, ~40 MB download)..."
+    NS_SETUP="$TMP_DIR/nodesource_setup.sh"
+    curl -fsSL --retry 3 --connect-timeout 20 --max-time 180 \
+        https://deb.nodesource.com/setup_lts.x -o "$NS_SETUP" >> "$APT_LOG" 2>&1 \
+        || fail "Cannot download the NodeSource setup script — see $APT_LOG"
+    sudo DEBIAN_FRONTEND=noninteractive bash "$NS_SETUP" >> "$APT_LOG" 2>&1 || {
+        tail -n 20 "$APT_LOG"
+        fail "NodeSource repo setup failed — see $APT_LOG"
+    }
+    rm -f "$NS_SETUP"
+
+    # Never fall back silently to Debian's nodejs (no npm, old major).
+    # LC_ALL=C: apt output is localized ("Candidato:" on an Italian system).
+    NODE_CANDIDATE=$(LC_ALL=C apt-cache policy nodejs 2>/dev/null | awk '/Candidate:/ {print $2}')
+    case "$NODE_CANDIDATE" in
+        *nodesource*) ;;
+        *) fail "NodeSource repo not active (apt candidate: ${NODE_CANDIDATE:-none}) — see $APT_LOG" ;;
+    esac
+
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs >> "$APT_LOG" 2>&1 || {
+        tail -n 25 "$APT_LOG"
+        fail "nodejs $NODE_CANDIDATE install failed — see $APT_LOG"
+    }
+else
+    warn "NodeSource has no $DPKG_ARCH builds: installing Debian's nodejs + npm instead."
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm >> "$APT_LOG" 2>&1 || {
+        tail -n 25 "$APT_LOG"
+        fail "nodejs/npm install failed — see $APT_LOG"
+    }
+fi
 ok "Node.js $(node -v) installed"
 
 # Verify every binary we actually depend on (apt can 'succeed' partially)

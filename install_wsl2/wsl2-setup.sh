@@ -28,6 +28,13 @@ BIN_DIR="$HOME/bin"
 MODE_FILE="$HOME/.server-mode"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Until the distro restarts with automount disabled, WSL appends the Windows
+# PATH (/mnt/c/...). Drop it for the whole setup: when a Linux binary is
+# missing (e.g. npm), a Windows install of the same tool would be picked up
+# instead and run through interop — installing into Windows, or hanging.
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd: -)
+export PATH
+
 ok()   { echo -e "${GREEN}[OK] $1${NC}"; }
 fail() { echo -e "${RED}[ERROR] $1${NC}"; exit 1; }
 info() { echo -e "${YELLOW}[...] $1${NC}"; }
@@ -50,10 +57,41 @@ DEBIAN_FRONTEND=noninteractive apt install -y \
     > /dev/null 2>&1
 ok "Packages installed"
 
-info "Installing Node.js (latest LTS via NodeSource)..."
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - > /dev/null 2>&1
-DEBIAN_FRONTEND=noninteractive apt install -y nodejs > /dev/null 2>&1
-ok "Node.js $(node -v) installed"
+# Node.js: Ubuntu 24.04 ships 18.x, so pull the current LTS from NodeSource.
+# - The setup script is saved to a file and run with DEBIAN_FRONTEND set: it
+#   runs its own apt update/install (upgrading apt, gnupg, ca-certificates),
+#   which would otherwise get an interactive debconf frontend.
+# - Every step is logged and checked. If the repo setup fails, a plain
+#   'apt install nodejs' silently installs Ubuntu's nodejs 18 WITHOUT npm,
+#   and the later npm/pm2 steps fail (or grab the host's Windows npm).
+mkdir -p "$TMP_DIR"
+NODE_LOG="$TMP_DIR/nodejs-install.log"
+NS_SETUP="$TMP_DIR/nodesource_setup.sh"
+info "Installing Node.js (latest LTS via NodeSource, ~45 MB download)..."
+curl -fsSL --retry 3 --connect-timeout 20 --max-time 180 \
+    https://deb.nodesource.com/setup_lts.x -o "$NS_SETUP" > "$NODE_LOG" 2>&1 || {
+    tail -n 20 "$NODE_LOG"
+    fail "Cannot download the NodeSource setup script — see $NODE_LOG"
+}
+DEBIAN_FRONTEND=noninteractive bash "$NS_SETUP" >> "$NODE_LOG" 2>&1 || {
+    tail -n 20 "$NODE_LOG"
+    fail "NodeSource repo setup failed — see $NODE_LOG"
+}
+rm -f "$NS_SETUP"
+# LC_ALL=C: apt output is localized ("Candidato:" on an Italian system)
+NODE_CANDIDATE=$(LC_ALL=C apt-cache policy nodejs 2>/dev/null | awk '/Candidate:/ {print $2}')
+case "$NODE_CANDIDATE" in
+    *nodesource*) ;;
+    *) tail -n 20 "$NODE_LOG"
+       fail "NodeSource repo not active (apt candidate: ${NODE_CANDIDATE:-none}) — see $NODE_LOG" ;;
+esac
+DEBIAN_FRONTEND=noninteractive apt install -y nodejs >> "$NODE_LOG" 2>&1 || {
+    tail -n 20 "$NODE_LOG"
+    fail "nodejs $NODE_CANDIDATE install failed — see $NODE_LOG"
+}
+command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+    || fail "node/npm missing after install — see $NODE_LOG"
+ok "Node.js $(node -v) + npm $(npm -v) installed"
 
 info "Installing aiohttp for PulseTerminal..."
 pip3 install --break-system-packages -q aiohttp > /dev/null 2>&1 || \
